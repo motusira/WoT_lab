@@ -3,6 +3,17 @@
 #include <stdlib.h>
 #include <time.h>
 
+bool handle_res(PGconn *conn, PGresult *res) {
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    PQclear(res);
+    fprintf(stderr, "Error: %s\n",
+            PQerrorMessage(conn));
+    return false;
+  }
+  PQclear(res);
+  return true;
+}
+
 bool create_players_table(PGconn *conn) {
   PGresult *res =
       PQexec(conn, "CREATE TABLE IF NOT EXISTS players ("
@@ -14,15 +25,14 @@ bool create_players_table(PGconn *conn) {
                    "destroyed_vehicles INTEGER DEFAULT 0,"
                    "last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                    ")");
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    PQclear(res);
-    fprintf(stderr, "Error at create_players_table(): %s\n",
-            PQerrorMessage(conn));
-    return false;
-  } else {
-    PQclear(res);
-    return true;
-  }
+  return handle_res(conn, res);
+}
+
+bool clear_players_table(PGconn *conn) {
+  PGresult *res =
+      PQexec(conn, "TRUNCATE TABLE players RESTART IDENTITY CASCADE");
+
+  return handle_res(conn, res);
 }
 
 bool insert_random_players(PGconn *conn, int count) {
@@ -33,12 +43,10 @@ bool insert_random_players(PGconn *conn, int count) {
   const char *login_suffixes[] = {"123", "X", "99", "007", "42", "GH", "TM"};
 
   PGresult *begin_res = PQexec(conn, "BEGIN");
-  if (PQresultStatus(begin_res) != PGRES_COMMAND_OK) {
-    fprintf(stderr, "BEGIN failed: %s\n", PQerrorMessage(conn));
-    PQclear(begin_res);
-    return NULL;
+  
+  if (!handle_res(conn, begin_res)) {
+    return false;
   }
-  PQclear(begin_res);
 
   for (int i = 0; i < count; i++) {
     char login[50];
@@ -66,37 +74,36 @@ bool insert_random_players(PGconn *conn, int count) {
         "VALUES ($1, $2, $3::DECIMAL(15,2), $4::INTEGER, $5::INTEGER)",
         5, NULL, paramValues, paramLengths, paramFormats, 0);
 
-    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      fprintf(stderr, "Error inserting player %s: %s\n", login,
-              PQerrorMessage(conn));
-      PQclear(res);
+    if (!handle_res(conn, res)) {
       PQexec(conn, "ROLLBACK");
-      return NULL;
+      return false;
     }
-    PQclear(res);
   }
 
   PGresult *commit_res = PQexec(conn, "COMMIT");
-  if (PQresultStatus(commit_res) != PGRES_COMMAND_OK) {
-    fprintf(stderr, "COMMIT failed: %s\n", PQerrorMessage(conn));
-    PQclear(commit_res);
-    return NULL;
+  
+  if (!handle_res(conn, commit_res)) {
+    return false;
   }
-
-  PQclear(commit_res);
 
   char count_str[20];
 
   snprintf(count_str, sizeof(count_str), "%d", count);
 
-  PGresult *res = PQexecParams(
-      conn, "SELECT 'Successfully inserted ' || $1 || ' players'",
-      1,    // 1 параметр
-      NULL, // типы параметров (NULL = автоматическое определение)
-      (const char *[]){count_str}, // значения параметров
-      NULL, // длины параметров (NULL = строки завершаются нулем)
-      NULL, // форматы параметров (0 = текст, 1 = бинарный)
-      0);   // формат результата (0 = текст)
+  PGresult *res =
+      PQexecParams(conn, "SELECT 'Successfully inserted ' || $1 || ' players'",
+                   1,    // 1 параметр
+                   NULL, // типы параметров (NULL = автоматическое определение)
+                   (const char *[]){count_str}, // значения параметров
+                   NULL, // длины параметров (NULL = строки завершаются нулем)
+                   NULL, // форматы параметров (0 = текст, 1 = бинарный)
+                   0);   // формат результата (0 = текст)
+  
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "SELECT failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    return NULL;
+  }
   PQclear(res);
   return true;
 }

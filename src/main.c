@@ -33,6 +33,8 @@ int main(void) {
 
   create_players_table(conn);
   insert_random_players(conn, 5);
+  getchar();
+  clear_players_table(conn);
 
   PQfinish(conn);
 

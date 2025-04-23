@@ -6,5 +6,6 @@
 
 bool create_players_table(PGconn *conn);
 bool insert_random_players(PGconn *conn, int count);
+bool clear_players_table(PGconn *conn);
 
 #endif
