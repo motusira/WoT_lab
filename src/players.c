@@ -1,18 +1,9 @@
-#include "../include/players.h"
 #include <libpq-fe.h>
 #include <stdlib.h>
 #include <time.h>
 
-bool handle_res(PGconn *conn, PGresult *res) {
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    PQclear(res);
-    fprintf(stderr, "Error: %s\n",
-            PQerrorMessage(conn));
-    return false;
-  }
-  PQclear(res);
-  return true;
-}
+#include "../include/players.h"
+#include "../include/utils.h"
 
 bool create_players_table(PGconn *conn) {
   PGresult *res =
@@ -25,14 +16,14 @@ bool create_players_table(PGconn *conn) {
                    "destroyed_vehicles INTEGER DEFAULT 0,"
                    "last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                    ")");
-  return handle_res(conn, res);
+  return handle_res_command(conn, res);
 }
 
 bool clear_players_table(PGconn *conn) {
   PGresult *res =
       PQexec(conn, "TRUNCATE TABLE players RESTART IDENTITY CASCADE");
 
-  return handle_res(conn, res);
+  return handle_res_command(conn, res);
 }
 
 bool insert_random_players(PGconn *conn, int count) {
@@ -44,7 +35,7 @@ bool insert_random_players(PGconn *conn, int count) {
 
   PGresult *begin_res = PQexec(conn, "BEGIN");
   
-  if (!handle_res(conn, begin_res)) {
+  if (!handle_res_command(conn, begin_res)) {
     return false;
   }
 
@@ -74,7 +65,7 @@ bool insert_random_players(PGconn *conn, int count) {
         "VALUES ($1, $2, $3::DECIMAL(15,2), $4::INTEGER, $5::INTEGER)",
         5, NULL, paramValues, paramLengths, paramFormats, 0);
 
-    if (!handle_res(conn, res)) {
+    if (!handle_res_command(conn, res)) {
       PQexec(conn, "ROLLBACK");
       return false;
     }
@@ -82,7 +73,7 @@ bool insert_random_players(PGconn *conn, int count) {
 
   PGresult *commit_res = PQexec(conn, "COMMIT");
   
-  if (!handle_res(conn, commit_res)) {
+  if (!handle_res_command(conn, commit_res)) {
     return false;
   }
 
@@ -99,11 +90,5 @@ bool insert_random_players(PGconn *conn, int count) {
                    NULL, // форматы параметров (0 = текст, 1 = бинарный)
                    0);   // формат результата (0 = текст)
   
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    fprintf(stderr, "SELECT failed: %s\n", PQerrorMessage(conn));
-    PQclear(res);
-    return NULL;
-  }
-  PQclear(res);
-  return true;
+  return handle_res_tuples(conn, res);
 }
