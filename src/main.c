@@ -1,6 +1,9 @@
 #include <libpq-fe.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "../include/players.h"
 
 PGconn *connect_to_db(const char *conninfo) {
   PGconn *conn = PQconnectdb(conninfo);
@@ -12,20 +15,6 @@ PGconn *connect_to_db(const char *conninfo) {
   return conn;
 }
 
-PGresult *create_players_table(PGconn *conn) {
-  PGresult *res =
-      PQexec(conn, "CREATE TABLE IF NOT EXISTS players ("
-                   "login VARCHAR(50) PRIMARY KEY,"
-                   "status VARCHAR(20) NOT NULL CHECK (status IN ('online', "
-                   "'in_game', 'offline')),"
-                   "currency_amount DECIMAL(15, 2) DEFAULT 0.00,"
-                   "total_damage INTEGER DEFAULT 0,"
-                   "destroyed_vehicles INTEGER DEFAULT 0,"
-                   "last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                   ")");
-  return res;
-}
-
 int main(void) {
   char *conninfo = "dbname=lab1db user=lab1 "
                    "password=lab1 host=localhost port=5432";
@@ -33,6 +22,7 @@ int main(void) {
   PGconn *conn = connect_to_db(conninfo);
 
   if (conn == NULL) {
+    fprintf(stderr, "Error: Connection failed\n");
     exit(1);
   } else {
     printf("Connection Established\n");
@@ -40,6 +30,9 @@ int main(void) {
     printf("Host: %s\n", PQhost(conn));
     printf("DBName: %s\n", PQdb(conn));
   }
+
+  create_players_table(conn);
+  insert_random_players(conn, 5);
 
   PQfinish(conn);
 
