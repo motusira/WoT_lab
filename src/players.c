@@ -8,7 +8,8 @@
 bool create_players_table(PGconn *conn) {
   PGresult *res =
       PQexec(conn, "CREATE TABLE IF NOT EXISTS players ("
-                   "login VARCHAR(50) PRIMARY KEY,"
+                   "player_id SERIAL PRIMARY KEY,"
+                   "login VARCHAR(50) UNIQUE NOT NULL,"
                    "status VARCHAR(20) NOT NULL CHECK (status IN ('online', "
                    "'in_game', 'offline')),"
                    "currency_amount DECIMAL(15, 2) DEFAULT 0.00,"
@@ -34,7 +35,7 @@ bool insert_random_players(PGconn *conn, int count) {
   const char *login_suffixes[] = {"123", "X", "99", "007", "42", "GH", "TM"};
 
   PGresult *begin_res = PQexec(conn, "BEGIN");
-  
+
   if (!handle_res_command(conn, begin_res)) {
     return false;
   }
@@ -72,23 +73,10 @@ bool insert_random_players(PGconn *conn, int count) {
   }
 
   PGresult *commit_res = PQexec(conn, "COMMIT");
-  
+
   if (!handle_res_command(conn, commit_res)) {
     return false;
   }
 
-  char count_str[20];
-
-  snprintf(count_str, sizeof(count_str), "%d", count);
-
-  PGresult *res =
-      PQexecParams(conn, "SELECT 'Successfully inserted ' || $1 || ' players'",
-                   1,    // 1 параметр
-                   NULL, // типы параметров (NULL = автоматическое определение)
-                   (const char *[]){count_str}, // значения параметров
-                   NULL, // длины параметров (NULL = строки завершаются нулем)
-                   NULL, // форматы параметров (0 = текст, 1 = бинарный)
-                   0);   // формат результата (0 = текст)
-  
-  return handle_res_tuples(conn, res);
+  return true; 
 }

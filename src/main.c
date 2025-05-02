@@ -2,14 +2,16 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
+#include "../include/hangar.h"
 #include "../include/players.h"
 
 PGconn *connect_to_db(const char *conninfo) {
   PGconn *conn = PQconnectdb(conninfo);
   if (PQstatus(conn) != CONNECTION_OK) {
     fprintf(stderr, "Error while connecting to the database server: %s\n",
-           PQerrorMessage(conn));
+            PQerrorMessage(conn));
     return NULL;
   }
   return conn;
@@ -38,6 +40,22 @@ int main(void) {
     goto cleanup;
   }
   if (!insert_random_players(conn, 5)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!create_modifications_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!create_tank_info_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!fill_tank_info_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!fill_modifications_table(conn)) {
     exit_code = 1;
     goto cleanup;
   }
