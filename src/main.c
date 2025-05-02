@@ -8,7 +8,7 @@
 PGconn *connect_to_db(const char *conninfo) {
   PGconn *conn = PQconnectdb(conninfo);
   if (PQstatus(conn) != CONNECTION_OK) {
-    printf("Error while connecting to the database server: %s\n",
+    fprintf(stderr, "Error while connecting to the database server: %s\n",
            PQerrorMessage(conn));
     return NULL;
   }
@@ -21,6 +21,8 @@ int main(void) {
 
   PGconn *conn = connect_to_db(conninfo);
 
+  int exit_code = 0;
+
   if (conn == NULL) {
     fprintf(stderr, "Error: Connection failed\n");
     exit(1);
@@ -31,12 +33,21 @@ int main(void) {
     printf("DBName: %s\n", PQdb(conn));
   }
 
-  create_players_table(conn);
-  insert_random_players(conn, 5);
+  if (!create_players_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!insert_random_players(conn, 5)) {
+    exit_code = 1;
+    goto cleanup;
+  }
   getchar();
-  clear_players_table(conn);
+  if (!clear_players_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
 
+cleanup:
   PQfinish(conn);
-
-  return 0;
+  return exit_code;
 }
