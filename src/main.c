@@ -6,8 +6,7 @@
 
 #include "../include/hangar.h"
 #include "../include/players.h"
-
-#include "../tigr/tigr.h"
+#include "../include/ui.h"
 
 PGconn *connect_to_db(const char *conninfo) {
   PGconn *conn = PQconnectdb(conninfo);
@@ -88,14 +87,7 @@ int main(void) {
   get_player_vehicles(conn, "SteelHunter");
   get_player_vehicles(conn, "RedBaron");
 
-  Tigr *screen = tigrWindow(320, 240, "Hello", 0);
-  while (!tigrClosed(screen)) {
-    tigrClear(screen, tigrRGB(0x80, 0x90, 0xa0));
-    tigrPrint(screen, tfont, 120, 110, tigrRGB(0xff, 0xff, 0xff),
-              "Hello, world.");
-    tigrUpdate(screen);
-  }
-  tigrFree(screen);
+  ui_start(conn);
 
 cleanup:
   PQfinish(conn);
