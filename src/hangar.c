@@ -48,11 +48,19 @@ bool create_tanks_table(PGconn *conn) {
 }
 
 bool fill_modifications_table(PGconn *conn) {
-  return import_from_csv(conn, "modifications", "assets/modifications.csv");
+  if (is_table_empty(conn, "modifications")) {
+    return import_from_csv(conn, "modifications", "assets/modifications.csv");
+  } else {
+    return true;
+  }
 }
 
 bool fill_tank_info_table(PGconn *conn) {
-  return import_from_csv(conn, "tank_info", "assets/tank_info.csv");
+  if (is_table_empty(conn, "tank_info")) {
+    return import_from_csv(conn, "tank_info", "assets/tank_info.csv");
+  } else {
+    return true;
+  }
 }
 
 bool fill_tanks_table(PGconn *conn) { return true; }
