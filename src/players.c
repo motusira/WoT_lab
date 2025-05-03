@@ -14,8 +14,7 @@ bool create_players_table(PGconn *conn) {
                    "'in_game', 'offline')),"
                    "currency_amount DECIMAL(15, 2) DEFAULT 0.00,"
                    "total_damage INTEGER DEFAULT 0,"
-                   "destroyed_vehicles INTEGER DEFAULT 0,"
-                   "last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                   "destroyed_vehicles INTEGER DEFAULT 0"
                    ")");
   return handle_res_command(conn, res);
 }
@@ -25,6 +24,14 @@ bool clear_players_table(PGconn *conn) {
       PQexec(conn, "TRUNCATE TABLE players RESTART IDENTITY CASCADE");
 
   return handle_res_command(conn, res);
+}
+
+bool fill_players_table(PGconn *conn) {
+  if (is_table_empty(conn, "players")) {
+    return import_from_csv(conn, "players", "assets/players.csv");
+  } else {
+    return true;
+  }
 }
 
 bool insert_random_players(PGconn *conn, int count) {

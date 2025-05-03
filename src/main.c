@@ -39,10 +39,6 @@ int main(void) {
     exit_code = 1;
     goto cleanup;
   }
-  if (!insert_random_players(conn, 5)) {
-    exit_code = 1;
-    goto cleanup;
-  }
   if (!create_modifications_table(conn)) {
     exit_code = 1;
     goto cleanup;
@@ -55,6 +51,14 @@ int main(void) {
     exit_code = 1;
     goto cleanup;
   }
+  if (!create_hangars_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!fill_players_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
   if (!fill_tank_info_table(conn)) {
     exit_code = 1;
     goto cleanup;
@@ -64,6 +68,10 @@ int main(void) {
     goto cleanup;
   }
   if (!fill_tanks_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!fill_hangars_table(conn)) {
     exit_code = 1;
     goto cleanup;
   }

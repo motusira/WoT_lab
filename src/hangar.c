@@ -8,7 +8,7 @@ bool create_hangars_table(PGconn *conn) {
       conn,
       "CREATE TABLE IF NOT EXISTS hangars ("
       "hangar_id SERIAL PRIMARY KEY,"
-      "player_id INT NOT NULL REFERENCES players(player_id) ON DELETE CASCASE,"
+      "player_id INT NOT NULL REFERENCES players(player_id) ON DELETE CASCADE,"
       "tank_id INT NOT NULL REFERENCES tanks(tank_id),"
       "game_points INT NOT NULL DEFAULT 0,"
       "status VARCHAR(20) NOT NULL CHECK(status IN ('operational', "
@@ -61,6 +61,14 @@ bool fill_modifications_table(PGconn *conn) {
 bool fill_tank_info_table(PGconn *conn) {
   if (is_table_empty(conn, "tank_info")) {
     return import_from_csv(conn, "tank_info", "assets/tank_info.csv");
+  } else {
+    return true;
+  }
+}
+
+bool fill_hangars_table(PGconn *conn) {
+  if (is_table_empty(conn, "hangars")) {
+    return import_from_csv(conn, "hangars", "assets/hangars.csv");
   } else {
     return true;
   }
