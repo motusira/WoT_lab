@@ -51,11 +51,19 @@ int main(void) {
     exit_code = 1;
     goto cleanup;
   }
+  if (!create_tanks_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
   if (!fill_tank_info_table(conn)) {
     exit_code = 1;
     goto cleanup;
   }
   if (!fill_modifications_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!fill_tanks_table(conn)) {
     exit_code = 1;
     goto cleanup;
   }
