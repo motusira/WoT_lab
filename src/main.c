@@ -75,11 +75,16 @@ int main(void) {
     exit_code = 1;
     goto cleanup;
   }
-  getchar();
-  if (!clear_players_table(conn)) {
-    exit_code = 1;
-    goto cleanup;
-  }
+  // getchar();
+  // if (!clear_players_table(conn)) {
+  //   exit_code = 1;
+  //   goto cleanup;
+  // }
+  
+  get_player_vehicles(conn, "BlitzKing");
+  get_player_vehicles(conn, "IronDuke");
+  get_player_vehicles(conn, "SteelHunter");
+  get_player_vehicles(conn, "RedBaron");
 
 cleanup:
   PQfinish(conn);

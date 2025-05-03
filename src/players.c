@@ -12,7 +12,7 @@ bool create_players_table(PGconn *conn) {
                    "login VARCHAR(50) UNIQUE NOT NULL,"
                    "status VARCHAR(20) NOT NULL CHECK (status IN ('online', "
                    "'in_game', 'offline')),"
-                   "currency_amount DECIMAL(15, 2) DEFAULT 0.00,"
+                   "currency_amount INTEGER DEFAULT 0,"
                    "total_damage INTEGER DEFAULT 0,"
                    "destroyed_vehicles INTEGER DEFAULT 0"
                    ")");
@@ -85,5 +85,43 @@ bool insert_random_players(PGconn *conn, int count) {
     return false;
   }
 
-  return true; 
+  return true;
+}
+
+void get_player_vehicles(PGconn *conn, const char *login) {
+  const char *query =
+      "SELECT p.player_id, h.tank_id, ti.type, m.mod_id, h.game_points "
+      "FROM players p "
+      "JOIN hangars h USING(player_id) "
+      "JOIN tanks t USING(tank_id) "
+      "JOIN tank_info ti ON t.data_id = ti.data_id "
+      "JOIN modifications m ON t.mod_id = m.mod_id "
+      "WHERE p.login = $1";
+
+  const char *params[1] = {login};
+
+  PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    return;
+  }
+
+  int rows = PQntuples(res);
+  if (rows == 0) {
+    printf("No vehicles found for player: %s\n", login);
+    return;
+  }
+
+  printf("Player ID: %s\n", PQgetvalue(res, 0, 0));
+  printf("| %-8s | %-12s | %-15s | %-10s |\n", "Tank ID", "Type",
+         "Modification", "Points");
+
+  for (int i = 0; i < rows; i++) {
+    printf("| %-8s | %-12s | %-15s | %-10s |\n", PQgetvalue(res, i, 1),
+           PQgetvalue(res, i, 2), PQgetvalue(res, i, 3), PQgetvalue(res, i, 4));
+  }
+
+  PQclear(res);
 }

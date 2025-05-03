@@ -8,5 +8,6 @@ bool create_players_table(PGconn *conn);
 bool insert_random_players(PGconn *conn, int count);
 bool fill_players_table(PGconn *conn);
 bool clear_players_table(PGconn *conn);
+void get_player_vehicles(PGconn *conn, const char *login);
 
 #endif
