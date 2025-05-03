@@ -100,7 +100,7 @@ bool _fill_tank_modifications(PGconn *conn) {
       switch (mod_id) {
       case 1:
         final_price = base_price;
-        final_points = base_points;
+        final_points = 0;
         break;
       case 2:
         final_price = round(base_price * 2.5);
