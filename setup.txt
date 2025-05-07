@@ -1,4 +1,0 @@
-sudo -u postgres psql
-CREATE USER lab1 WITH PASSWORD 'lab1';
-CREATE DATABASE lab1db;
-GRANT ALL PRIVILEGES ON DATABASE lab1db TO lab1;
