@@ -4,13 +4,12 @@ project(bd C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(SOURCES src/main.c src/hangar.c src/main.c src/players.c src/utils.c src/ui.c
-            tigr/tigr.c)
+set(SOURCES src/main.c src/hangar.c src/main.c src/players.c src/utils.c
+            src/ui.c)
 
-set(HEADERS include/hangar.h include/players.h include/utils.h include/ui.h tigr/tigr.h)
+set(HEADERS include/hangar.h include/players.h include/utils.h include/ui.h luigi/luigi.h)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 find_package(PostgreSQL REQUIRED)
-target_include_directories(${PROJECT_NAME} PRIVATE include tigr)
-target_link_libraries(${PROJECT_NAME} PRIVATE PostgreSQL::PostgreSQL m GLU GL
-                                              X11)
+target_include_directories(${PROJECT_NAME} PRIVATE include luigi)
+target_link_libraries(${PROJECT_NAME} PRIVATE PostgreSQL::PostgreSQL m X11)
