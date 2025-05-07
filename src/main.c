@@ -82,10 +82,10 @@ int main(void) {
   //   goto cleanup;
   // }
 
-  get_player_vehicles(conn, "BlitzKing");
-  get_player_vehicles(conn, "IronDuke");
-  get_player_vehicles(conn, "SteelHunter");
-  get_player_vehicles(conn, "RedBaron");
+  // get_player_vehicles(conn, "BlitzKing");
+  // get_player_vehicles(conn, "IronDuke");
+  // get_player_vehicles(conn, "SteelHunter");
+  // get_player_vehicles(conn, "RedBaron");
 
   ui_start(conn);
 
