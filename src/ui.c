@@ -1,37 +1,17 @@
 #include "../include/ui.h"
-#include "players.h"
+#include <libpq-fe.h>
 
 #define UI_LINUX
 #define UI_IMPLEMENTATION
 
 #include "../luigi/luigi.h"
 
-UIButton *button;
+UIButton *button, *find_button, *clear_button, *login_button;
 UILabel *label;
-
 UIWindow *window;
-UIPanel *login;
-UIButton *login_button;
-
-UITabPane *pane;
-UIPanel *panel;
-
-int LoginButtonMessage(UIElement *element, UIMessage message, int di,
-                       void *dp) {
-  if (message == UI_MSG_CLICKED) {
-    UIElementDestroy(element);
-    UIElementDestroy(element->parent);
-  }
-  return 0;
-}
-
-int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
-  if (message == UI_MSG_PRESSED_DESCENDENT || message == UI_MSG_RIGHT_UP) {
-    UIElementRelayout(element);
-    UIElementRefresh(element);
-  }
-  return 0;
-}
+UIPanel *login, *player_info, *pi_ui, *pi_result;
+UITabPane *admin_pane;
+UITextbox *pi_input;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query =
@@ -58,51 +38,95 @@ void draw_info(PGconn *conn, const char *l) {
   int rows = PQntuples(res);
   if (rows == 0) {
     snprintf(buff, 1024, "No vehicles found for player: %s", l);
-    UILabelCreate(&panel->e, 0, buff, -1);
+    UILabelCreate(&pi_result->e, 0, buff, -1);
     return;
   }
 
   snprintf(buff, 1024, "Player login: %s | Player ID: %s", l,
            PQgetvalue(res, 0, 0));
-  UILabelCreate(&panel->e, 0, buff, -1);
+  UILabelCreate(&pi_result->e, 0, buff, -1);
   snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |", "Tank ID", "Type",
            "Modification", "Points");
-  UILabelCreate(&panel->e, 0, buff, -1);
+  UILabelCreate(&pi_result->e, 0, buff, -1);
 
   for (int i = 0; i < rows; i++) {
     snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |",
              PQgetvalue(res, i, 1), PQgetvalue(res, i, 2),
              PQgetvalue(res, i, 3), PQgetvalue(res, i, 4));
-    UILabelCreate(&panel->e, 0, buff, -1);
+    UILabelCreate(&pi_result->e, 0, buff, -1);
   }
 
   PQclear(res);
 }
 
-UITextbox *textbox;
-
-int TextBoxMessage(UIElement *element, UIMessage message, int di, void *dp) {
-  if (message == UI_MSG_KEY_TYPED) {
-    UIKeyTyped *k = (UIKeyTyped *) dp;
-    if(k->code == UI_KEYCODE_ENTER) {
-      draw_info(textbox->e.cp, UITextboxToCString(textbox));
-    }
+int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_PRESSED_DESCENDENT) {
+    UIElementRelayout(element);
+    UIElementRefresh(element);
   }
   return 0;
 }
 
-void ui_start(PGconn *conn) {
+int LoginButtonMessage(UIElement *element, UIMessage message, int di,
+                       void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    UIElementDestroy(element);
+    UIElementDestroy(element->parent);
+  }
+  return 0;
+}
+
+int PIInputMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_KEY_TYPED) {
+    UIKeyTyped *k = (UIKeyTyped *) dp;
+    if(k->code == UI_KEYCODE_ENTER) {
+      draw_info(pi_input->e.cp, UITextboxToCString(pi_input));
+      UITextboxClear(pi_input, 0);
+    }
+  } else if (message  == UI_MSG_USER) {
+      draw_info(pi_input->e.cp, UITextboxToCString(pi_input));
+      UITextboxClear(pi_input, 0);
+  }
+  return 0;
+}
+
+int FindButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    UIElementMessage(&pi_input->e, UI_MSG_USER, 0, NULL);
+  }
+  return 0;
+}
+
+int ClearButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    UIElementDestroyDescendents(&pi_result->e);
+  }
+  return 0;
+}
+
+void init(PGconn *conn) {
   UIInitialise();
   ui.theme = uiThemeClassic;
-  window = UIWindowCreate(0, UI_ELEMENT_PARENT_PUSH, "WoT", 640, 480);
+  UIFontActivate(UIFontCreate("font.ttf", 18));
+  window = UIWindowCreate(0, 0, "WoT", 640, 480);
   window->e.messageUser = WindowMessage;
-  login = UIPanelCreate(0, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  login = UIPanelCreate(&window->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
   login_button = UIButtonCreate(&login->e, 0, "Login", -1);
   login_button->e.messageUser = LoginButtonMessage;
-  pane = UITabPaneCreate(&window->e, 0, "tab1");
-  panel = UIPanelCreate(&pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL);
-  textbox = UITextboxCreate(&panel->e, 0);
-  textbox->e.cp = (void *) conn;
-  textbox->e.messageUser = TextBoxMessage;
+  admin_pane = UITabPaneCreate(&window->e, 0, "Player info");
+  player_info = UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  pi_ui = UIPanelCreate(&player_info->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
+  pi_result = UIPanelCreate(&player_info->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL);
+  pi_input = UITextboxCreate(&pi_ui->e, 0);
+  pi_input->e.cp = (void *) conn;
+  pi_input->e.messageUser = PIInputMessage;
+  find_button = UIButtonCreate(&pi_ui->e, 0, "Find", -1);
+  find_button->e.messageUser = FindButtonMessage;
+  clear_button = UIButtonCreate(&pi_ui->e, 0, "Clear", -1);
+  clear_button->e.messageUser = ClearButtonMessage;
+}
+
+void ui_start(PGconn *conn) {
+  init(conn);
   UIMessageLoop();
 }
