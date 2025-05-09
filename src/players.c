@@ -1,5 +1,6 @@
 #include <libpq-fe.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "../include/players.h"
@@ -124,4 +125,98 @@ void get_player_vehicles(PGconn *conn, const char *login) {
   }
 
   PQclear(res);
+}
+
+void free_players(Player *players, int count) {
+  for (int i = 0; i < count; i++) {
+    free(players[i].login);
+    free(players[i].status);
+  }
+  free(players);
+}
+
+Player *fetch_all_players(PGconn *conn, int *player_count) {
+  const char *query = "SELECT * FROM players";
+  PGresult *res = PQexec(conn, query);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+    *player_count = 0;
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  *player_count = rows;
+
+  Player *players = malloc(rows * sizeof(Player));
+  if (!players) {
+    perror("Memory allocation failed");
+    *player_count = 0;
+    PQclear(res);
+    return NULL;
+  }
+
+  for (int i = 0; i < rows; i++) {
+    players[i].player_id = atoi(PQgetvalue(res, i, 0));
+
+    players[i].login = strdup(PQgetvalue(res, i, 1));
+    players[i].status = strdup(PQgetvalue(res, i, 2));
+
+    players[i].currency_amount = atof(PQgetvalue(res, i, 3));
+    players[i].total_damage = atoi(PQgetvalue(res, i, 4));
+    players[i].destroyed_vehicles = atoi(PQgetvalue(res, i, 5));
+    players[i].rating = players[i].total_damage / 1000 + players[i].destroyed_vehicles * 10;
+  }
+
+  PQclear(res);
+  return players;
+}
+
+int compare_players(const void *a, const void *b, SortCriteria criteria,
+                    SortOrder order) {
+  const Player *p1 = (const Player *)a;
+  const Player *p2 = (const Player *)b;
+  int result = 0;
+
+  switch (criteria) {
+  case BY_ID:
+    result = p1->player_id - p2->player_id;
+    break;
+  case BY_RATING:
+    result = (p1->rating > p2->rating) ? 1 : (p1->rating < p2->rating) ? -1 : 0;
+    break;
+  }
+
+  return (order == SORT_DESC) ? -result : result;
+}
+
+int compare_by_id_asc(const void *a, const void *b) {
+  return compare_players(a, b, BY_ID, SORT_ASC);
+}
+
+int compare_by_id_desc(const void *a, const void *b) {
+  return compare_players(a, b, BY_ID, SORT_DESC);
+}
+
+int compare_by_rating_asc(const void *a, const void *b) {
+  return compare_players(a, b, BY_RATING, SORT_ASC);
+}
+
+int compare_by_rating_desc(const void *a, const void *b) {
+  return compare_players(a, b, BY_RATING, SORT_DESC);
+}
+
+void sort_players(Player *players, int count, SortCriteria criteria,
+                  SortOrder order) {
+  switch (criteria) {
+  case BY_ID:
+    qsort(players, count, sizeof(Player),
+          (order == SORT_ASC) ? compare_by_id_asc : compare_by_id_desc);
+    break;
+  case BY_RATING:
+    qsort(players, count, sizeof(Player),
+          (order == SORT_ASC) ? compare_by_rating_asc : compare_by_rating_desc);
+    break;
+  }
 }

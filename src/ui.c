@@ -1,5 +1,7 @@
 #include "../include/ui.h"
+#include "../include/players.h"
 #include <libpq-fe.h>
+#include <stdio.h>
 
 #define UI_LINUX
 #define UI_IMPLEMENTATION
@@ -13,6 +15,9 @@ UIPanel *login, *player_info, *pi_ui, *pi_result, *players_list;
 UITabPane *admin_pane;
 UITextbox *pi_input;
 UITable *players_table;
+
+int pl_count;
+Player *pl;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query =
@@ -122,7 +127,22 @@ int PlayersTableMessage(UIElement *element, UIMessage message, int di,
                         void *dp) {
   if (message == UI_MSG_TABLE_GET_ITEM) {
     UITableGetItem *m = (UITableGetItem *)dp;
-    return snprintf(m->buffer, m->bufferBytes, "Item %d", m->index);
+    switch (m->column) {
+      case 0:
+        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].player_id);
+      case 1:
+        return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].login);
+      case 2:
+        return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].status);
+      case 3:
+        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].currency_amount);
+      case 4:
+        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].total_damage);
+      case 5:
+        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].destroyed_vehicles);
+      case 6:
+        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].rating);
+    }
   }
   return 0;
 }
@@ -156,14 +176,18 @@ void init(PGconn *conn) {
   clear_button = UIButtonCreate(&pi_ui->e, 0, "Clear", -1);
   clear_button->e.messageUser = ClearButtonMessage;
 
+  pl = fetch_all_players(conn, &pl_count);
   players_table =
-      UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL, "ID\tLogin\tStatus\tCurrency amount\tTotal damage\tDestroyed vehicles");
+      UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL, "ID\tLogin\tStatus\tCurrency amount\tTotal damage\tDestroyed vehicles\tRating");
+  players_table->e.cp = (void *) pl;
   players_table->e.messageUser = PlayersTableMessage;
-  players_table->itemCount = 20;
+  players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
+
 }
 
 void ui_start(PGconn *conn) {
   init(conn);
   UIMessageLoop();
+  free_players(pl, pl_count);
 }
