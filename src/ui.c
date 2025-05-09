@@ -12,6 +12,7 @@ UIWindow *window;
 UIPanel *login, *player_info, *pi_ui, *pi_result, *players_list;
 UITabPane *admin_pane;
 UITextbox *pi_input;
+UITable *players_table;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query =
@@ -117,16 +118,29 @@ int ClearButtonMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+int PlayersTableMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_TABLE_GET_ITEM) {
+    UITableGetItem *m = (UITableGetItem *)dp;
+    return snprintf(m->buffer, m->bufferBytes, "Item %d", m->index);
+  }
+  return 0;
+}
+
 void init(PGconn *conn) {
   UIInitialise();
   ui.theme = uiThemeClassic;
   UIFontActivate(UIFontCreate("font.ttf", 18));
+
   window = UIWindowCreate(0, 0, "WoT", 640, 480);
   window->e.messageUser = WindowMessage;
+
   login = UIPanelCreate(&window->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
   login_button = UIButtonCreate(&login->e, 0, "Login", -1);
   login_button->e.messageUser = LoginButtonMessage;
-  admin_pane = UITabPaneCreate(&window->e, 0, "Player info");
+
+  admin_pane = UITabPaneCreate(&window->e, 0, "Player info\tPlayers");
+
   player_info =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING |
                                         UI_PANEL_SCROLL);
@@ -141,6 +155,12 @@ void init(PGconn *conn) {
   find_button->e.messageUser = FindButtonMessage;
   clear_button = UIButtonCreate(&pi_ui->e, 0, "Clear", -1);
   clear_button->e.messageUser = ClearButtonMessage;
+
+  players_table =
+      UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL, "ID\tLogin\tStatus\tCurrency amount\tTotal damage\tDestroyed vehicles");
+  players_table->e.messageUser = PlayersTableMessage;
+  players_table->itemCount = 20;
+  UITableResizeColumns(players_table);
 }
 
 void ui_start(PGconn *conn) {
