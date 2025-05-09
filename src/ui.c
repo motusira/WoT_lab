@@ -1,7 +1,6 @@
 #include "../include/ui.h"
 #include "../include/players.h"
 #include <libpq-fe.h>
-#include <stdio.h>
 
 #define UI_LINUX
 #define UI_IMPLEMENTATION
@@ -17,6 +16,8 @@ UITextbox *pi_input;
 UITable *players_table;
 
 int pl_count;
+int id = 1, rating;
+int selected = -1;
 Player *pl;
 
 void draw_info(PGconn *conn, const char *l) {
@@ -127,21 +128,48 @@ int PlayersTableMessage(UIElement *element, UIMessage message, int di,
                         void *dp) {
   if (message == UI_MSG_TABLE_GET_ITEM) {
     UITableGetItem *m = (UITableGetItem *)dp;
+    m->isSelected = selected == m->index;
     switch (m->column) {
-      case 0:
-        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].player_id);
-      case 1:
-        return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].login);
-      case 2:
-        return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].status);
-      case 3:
-        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].currency_amount);
-      case 4:
-        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].total_damage);
-      case 5:
-        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].destroyed_vehicles);
-      case 6:
-        return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].rating);
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].player_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%d", pl[m->index].rating);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].login);
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%s", pl[m->index].status);
+    case 4:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      pl[m->index].currency_amount);
+    case 5:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      pl[m->index].total_damage);
+    case 6:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      pl[m->index].destroyed_vehicles);
+    }
+  } else if (message == UI_MSG_LEFT_DOWN) {
+    int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
+                                   element->window->cursorY);
+    switch (hit) {
+    case 0:
+      id = id == 0 ? 1 : 0;
+      sort_players(pl, pl_count, BY_ID, id);
+      break;
+    case 1:
+      rating = rating == 0 ? 1 : 0;
+      sort_players(pl, pl_count, BY_RATING, rating);
+      break;
+    }
+
+    int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
+                                element->window->cursorY);
+    if (selected != el_hit) {
+      selected = el_hit;
+
+      if (!UITableEnsureVisible((UITable *)element, selected)) {
+        UIElementRepaint(element, NULL);
+      }
     }
   }
   return 0;
@@ -177,13 +205,13 @@ void init(PGconn *conn) {
   clear_button->e.messageUser = ClearButtonMessage;
 
   pl = fetch_all_players(conn, &pl_count);
-  players_table =
-      UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL, "ID\tLogin\tStatus\tCurrency amount\tTotal damage\tDestroyed vehicles\tRating");
-  players_table->e.cp = (void *) pl;
+  players_table = UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL,
+                                "ID\tRating\tLogin\tStatus\tCurrency "
+                                "amount\tTotal damage\tDestroyed vehicles");
+  players_table->e.cp = (void *)pl;
   players_table->e.messageUser = PlayersTableMessage;
   players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
-
 }
 
 void ui_start(PGconn *conn) {
