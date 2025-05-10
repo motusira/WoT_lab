@@ -1,4 +1,5 @@
 #include "../include/ui.h"
+#include "../include/matches.h"
 #include "../include/players.h"
 #include <libpq-fe.h>
 
@@ -7,10 +8,11 @@
 
 #include "../luigi/luigi.h"
 
-UIButton *button, *find_button, *clear_button, *login_button;
+UIButton *button, *find_button, *clear_button, *login_button,
+    *make_match_button, *update_matches_button;
 UILabel *label;
 UIWindow *window;
-UIPanel *login, *player_info, *pi_ui, *pi_result, *players_list;
+UIPanel *login, *player_info, *pi_ui, *pi_result, *players_list, *match_making;
 UITabPane *admin_pane;
 UITextbox *pi_input;
 UITable *players_table;
@@ -175,10 +177,26 @@ int PlayersTableMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
+                           void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    find_and_create_match(element->cp);
+  }
+  return 0;
+}
+
+int UpdateMatchesButtonMessage(UIElement *element, UIMessage message, int di,
+                           void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    process_completed_matches(element->cp);
+  }
+  return 0;
+}
+
 void init(PGconn *conn) {
   UIInitialise();
   ui.theme = uiThemeClassic;
-  UIFontActivate(UIFontCreate("font.ttf", 18));
+  UIFontActivate(UIFontCreate("font.ttf", 16));
 
   window = UIWindowCreate(0, 0, "WoT", 640, 480);
   window->e.messageUser = WindowMessage;
@@ -187,7 +205,8 @@ void init(PGconn *conn) {
   login_button = UIButtonCreate(&login->e, 0, "Login", -1);
   login_button->e.messageUser = LoginButtonMessage;
 
-  admin_pane = UITabPaneCreate(&window->e, 0, "Player info\tPlayers");
+  admin_pane =
+      UITabPaneCreate(&window->e, 0, "Player info\tPlayers\tMatch making");
 
   player_info =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING |
@@ -212,6 +231,16 @@ void init(PGconn *conn) {
   players_table->e.messageUser = PlayersTableMessage;
   players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
+
+  match_making =
+      UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  make_match_button = UIButtonCreate(&match_making->e, 0, "Create match", -1);
+  make_match_button->e.cp = conn;
+  make_match_button->e.messageUser = MakeMatchButtonMessage;
+  update_matches_button =
+      UIButtonCreate(&match_making->e, 0, "Update matches", -1);
+  update_matches_button->e.cp = conn;
+  update_matches_button->e.messageUser = UpdateMatchesButtonMessage;
 }
 
 void ui_start(PGconn *conn) {

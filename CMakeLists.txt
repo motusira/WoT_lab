@@ -5,9 +5,9 @@ project(bd C)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SOURCES src/main.c src/hangar.c src/main.c src/players.c src/utils.c
-            src/ui.c)
+            src/ui.c src/matches.c)
 
-set(HEADERS include/hangar.h include/players.h include/utils.h include/ui.h luigi/luigi.h /usr/include/freetype2/freetype.h)
+set(HEADERS include/hangar.h include/players.h include/utils.h include/ui.h include/matches.h luigi/luigi.h /usr/include/freetype2/freetype.h)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 find_package(PostgreSQL REQUIRED)

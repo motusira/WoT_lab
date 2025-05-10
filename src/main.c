@@ -7,6 +7,7 @@
 #include "../include/hangar.h"
 #include "../include/players.h"
 #include "../include/ui.h"
+#include "../include/matches.h"
 
 PGconn *connect_to_db(const char *conninfo) {
   PGconn *conn = PQconnectdb(conninfo);
@@ -53,6 +54,14 @@ int main(void) {
     goto cleanup;
   }
   if (!create_hangars_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!create_participants_table(conn)) {
+    exit_code = 1;
+    goto cleanup;
+  }
+  if (!create_matches_table(conn)) {
     exit_code = 1;
     goto cleanup;
   }
