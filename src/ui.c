@@ -209,6 +209,7 @@ int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
   if (message == UI_MSG_CLICKED) {
     find_and_create_match(element->cp);
     update_pl(element->cp);
+    update_matches(conn);
   }
   return 0;
 }
@@ -218,6 +219,7 @@ int UpdateMatchesButtonMessage(UIElement *element, UIMessage message, int di,
   if (message == UI_MSG_CLICKED) {
     process_completed_matches(element->cp);
     update_pl(element->cp);
+    update_matches(conn);
   }
   return 0;
 }
@@ -235,7 +237,7 @@ int MatchesTableMessage(UIElement *element, UIMessage message, int di,
     case 1:
       return snprintf(m->buffer, m->bufferBytes, "%s", matches[m->index].start_time);
     case 2:
-      return snprintf(m->buffer, m->bufferBytes, "%s", matches[m->index].result == 1 ? "Team 1 won " : matches[m->index].result == 2 ? "Team 2 won" : matches[m->index].result == 0 ? "Draw" : "The match is still in progress");
+      return snprintf(m->buffer, m->bufferBytes, "%s", matches[m->index].result == 1 ? "Team 1 won " : matches[m->index].result == 2 ? "Team 2 won" : matches[m->index].result == 0 ? "Draw" : "In progress");
     case 3:
       return snprintf(m->buffer, m->bufferBytes, "%d", matches[m->index].tech_level);
     case 4:
