@@ -55,7 +55,6 @@ int find_and_create_match(PGconn *conn) {
            "LIMIT 1");
 
   res = PQexec(conn, query);
-  printf("%s\n", PQerrorMessage(conn));
   if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
     PQclear(res);
     return -1;

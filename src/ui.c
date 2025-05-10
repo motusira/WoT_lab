@@ -74,7 +74,6 @@ void draw_info(PGconn *conn, const char *l) {
   snprintf(buff, 1024, "Destroyed vehicles: %s", PQgetvalue(res, 0, 6));
   UILabelCreate(&pi_result->e, 0, buff, -1);
 
-  // Заголовок таблицы с новыми колонками
   snprintf(buff, 1024, "| %-8s | %-5s | %-14s | %-12s | %-15s | %-10s |", 
            "Tank ID", "Tier", "Hangar Status", "Type", "Modification", "Points");
   UILabelCreate(&pi_result->e, 0, buff, -1);
@@ -93,63 +92,10 @@ void draw_info(PGconn *conn, const char *l) {
   PQclear(res);
 }
 
-// void draw_info(PGconn *conn, const char *l) {
-//   const char *query =
-//       "SELECT p.player_id, p.status, p.currency_amount, p.total_damage, "
-//       "p.destroyed_vehicles, h.tank_id, ti.type, m.mod_id, h.game_points "
-//       "FROM players p "
-//       "JOIN hangars h USING(player_id) "
-//       "JOIN tanks t USING(tank_id) "
-//       "JOIN tank_info ti ON t.data_id = ti.data_id "
-//       "JOIN modifications m ON t.mod_id = m.mod_id "
-//       "WHERE p.login = $1";
-//
-//   const char *params[1] = {l};
-//
-//   PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
-//
-//   char buff[1024];
-//
-//   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-//     fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
-//     PQclear(res);
-//     return;
-//   }
-//
-//   int rows = PQntuples(res);
-//   if (rows == 0) {
-//     snprintf(buff, 1024, "No vehicles found for player: %s", l);
-//     UILabelCreate(&pi_result->e, 0, buff, -1);
-//     return;
-//   }
-//
-//   snprintf(buff, 1024, "Login: %s", l);
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "ID: %s", PQgetvalue(res, 0, 0));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "Status: %s", PQgetvalue(res, 0, 1));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "Total damage: %s", PQgetvalue(res, 0, 3));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "Destroyed vehicles: %s", PQgetvalue(res, 0, 4));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//   snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |", "Tank ID", "Type",
-//            "Modification", "Points");
-//   UILabelCreate(&pi_result->e, 0, buff, -1);
-//
-//   for (int i = 0; i < rows; i++) {
-//     snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |",
-//              PQgetvalue(res, i, 5), PQgetvalue(res, i, 6),
-//              PQgetvalue(res, i, 7), PQgetvalue(res, i, 8));
-//     UILabelCreate(&pi_result->e, 0, buff, -1);
-//   }
-//
-//   PQclear(res);
-// }
+void update_pl(PGconn *conn) {
+    free_players(pl, pl_count);
+    pl = fetch_all_players(conn, &pl_count);
+}
 
 int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
   if (message == UI_MSG_PRESSED_DESCENDENT) {
@@ -252,6 +198,7 @@ int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
                            void *dp) {
   if (message == UI_MSG_CLICKED) {
     find_and_create_match(element->cp);
+    update_pl(element->cp);
   }
   return 0;
 }
@@ -260,6 +207,7 @@ int UpdateMatchesButtonMessage(UIElement *element, UIMessage message, int di,
                            void *dp) {
   if (message == UI_MSG_CLICKED) {
     process_completed_matches(element->cp);
+    update_pl(element->cp);
   }
   return 0;
 }
@@ -302,6 +250,7 @@ void init(PGconn *conn) {
   players_table->e.messageUser = PlayersTableMessage;
   players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
+  UIButtonCreate(&players_table->e, 0, "some button", -1);
 
   match_making =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
