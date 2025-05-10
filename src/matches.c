@@ -8,7 +8,7 @@ bool create_participants_table(PGconn *conn) {
       PQexec(conn, "CREATE TABLE IF NOT EXISTS participants("
                    "participant_id SERIAL PRIMARY KEY,"
                    "player_id INT NOT NULL REFERENCES players(player_id),"
-                   "tank_id INT NOT NULL REFERENCES tanks(tank_id),"
+                   "hangar_id INT NOT NULL REFERENCES hangars(hangar_id),"
                    "is_killed BOOLEAN NOT NULL DEFAULT false,"
                    "damage_dealt INT NOT NULL CHECK(damage_dealt >= 0),"
                    "kills INT NOT NULL CHECK(kills >= 0),"
@@ -39,7 +39,7 @@ int find_and_create_match(PGconn *conn) {
 
   snprintf(query, sizeof(query),
            "WITH available_players AS ("
-           "  SELECT p.player_id, t.tank_id, ti.tier "
+           "  SELECT p.player_id, h.hangar_id, ti.tier "
            "  FROM players p "
            "  JOIN hangars h ON p.player_id = h.player_id "
            "  JOIN tanks t ON h.tank_id = t.tank_id "
@@ -55,6 +55,7 @@ int find_and_create_match(PGconn *conn) {
            "LIMIT 1");
 
   res = PQexec(conn, query);
+  printf("%s\n", PQerrorMessage(conn));
   if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
     PQclear(res);
     return -1;
@@ -64,7 +65,7 @@ int find_and_create_match(PGconn *conn) {
   PQclear(res);
 
   snprintf(query, sizeof(query),
-           "SELECT p.player_id, t.tank_id "
+           "SELECT p.player_id, h.hangar_id "
            "FROM players p "
            "JOIN hangars h ON p.player_id = h.player_id "
            "JOIN tanks t ON h.tank_id = t.tank_id "
@@ -87,14 +88,14 @@ int find_and_create_match(PGconn *conn) {
   int participants[6];
   for (int i = 0; i < 6; i++) {
     int player_id = atoi(PQgetvalue(res, i, 0));
-    int tank_id = atoi(PQgetvalue(res, i, 1));
+    int hangar_id = atoi(PQgetvalue(res, i, 1));
     int team = (i < 3) ? 1 : 2;
 
     snprintf(query, sizeof(query),
              "INSERT INTO participants "
-             "(player_id, tank_id, is_killed, damage_dealt, kills, team) "
+             "(player_id, hangar_id, is_killed, damage_dealt, kills, team) "
              "VALUES (%d, %d, false, 0, 0, %d) RETURNING participant_id",
-             player_id, tank_id, team);
+             player_id, hangar_id, team);
 
     PGresult *ires = PQexec(conn, query);
     if (PQresultStatus(ires) != PGRES_TUPLES_OK) {
@@ -119,7 +120,6 @@ int find_and_create_match(PGconn *conn) {
   }
   PQclear(res);
 
-
   snprintf(query, sizeof(query),
            "INSERT INTO matches "
            "(start_time, result, tech_level, "
@@ -136,7 +136,6 @@ int find_and_create_match(PGconn *conn) {
     return -1;
   }
 
-
   int match_id = atoi(PQgetvalue(res, 0, 0));
   PQclear(res);
 
@@ -145,131 +144,135 @@ int find_and_create_match(PGconn *conn) {
 }
 
 int *distribute_kills(int total_kills, int player_count) {
-    int *kills = calloc(player_count, sizeof(int));
-    for(int i = 0; i < total_kills; i++) {
-        kills[rand() % player_count]++;
-    }
-    return kills;
+  int *kills = calloc(player_count, sizeof(int));
+  for (int i = 0; i < total_kills; i++) {
+    kills[rand() % player_count]++;
+  }
+  return kills;
 }
 
 void process_completed_matches(PGconn *conn) {
-    const char *find_matches_query =
-        "SELECT match_id, start_time, tech_level, "
-        "participant1, participant2, participant3, "
-        "participant4, participant5, participant6 "
-        "FROM matches "
-        "WHERE result = -1 "
-        "  AND start_time < (NOW() - INTERVAL '30 seconds')";
+  const char *find_matches_query =
+      "SELECT match_id, start_time, tech_level, "
+      "participant1, participant2, participant3, "
+      "participant4, participant5, participant6 "
+      "FROM matches "
+      "WHERE result = -1 "
+      "  AND start_time < (NOW() - INTERVAL '30 seconds')";
 
-    PGresult *res = PQexec(conn, find_matches_query);
-    
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        PQclear(res);
-        return;
-    }
+  PGresult *res = PQexec(conn, find_matches_query);
 
-    int match_count = PQntuples(res);
-    
-    for (int i = 0; i < match_count; i++) {
-        int match_id = atoi(PQgetvalue(res, i, 0));
-        int tech_level = atoi(PQgetvalue(res, i, 2));
-        
-        int participants[6];
-        for(int p = 0; p < 6; p++) {
-            participants[p] = atoi(PQgetvalue(res, i, 3 + p));
-        }
-
-        PQexec(conn, "BEGIN");
-
-        // Генерация результата матча
-        int result = rand() % 3;
-        double multipliers[3] = {1.0, 1.5, 0.5}; // множители для ничьей/победы/поражения
-
-        // Генерация статистики
-        int team1_kills = rand() % 4; // 0-3 убийства для команды 1
-        int team2_kills = rand() % 4; // 0-3 убийства для команды 2
-        
-        // Согласование убийств между командами
-        int team1_deaths = team2_kills;
-        int team2_deaths = team1_kills;
-
-        // Распределение убийств внутри команд
-        int *team1_kills_dist = distribute_kills(team1_kills, 3);
-        int *team2_kills_dist = distribute_kills(team2_kills, 3);
-
-        // Обработка участников
-        for(int p = 0; p < 6; p++) {
-            int team = (p < 3) ? 1 : 2;
-            int player_kills = (p < 3) ? team1_kills_dist[p] : team2_kills_dist[p-3];
-            int deaths = (team == 1) ? (player_kills > 0 ? 0 : (rand() % 2)) : 
-                                      (player_kills > 0 ? 0 : (rand() % 2));
-            
-            // Генерация урона (500-5000 базовый + 500 за каждое убийство)
-            int damage = 500 + rand() % 4501 + player_kills * 500;
-
-            // Обновление участника
-            char update_participant[512];
-            snprintf(update_participant, sizeof(update_participant),
-                "UPDATE participants SET "
-                "damage_dealt = %d, "
-                "kills = %d, "
-                "is_killed = %s "
-                "WHERE participant_id = %d",
-                damage,
-                player_kills,
-                (deaths == 1) ? "true" : "false",
-                participants[p]);
-            
-            PGresult *ures = PQexec(conn, update_participant);
-            PQclear(ures);
-
-            double multiplier = (result == 0) ? multipliers[0] : 
-                               (team == result) ? multipliers[1] : multipliers[2];
-            
-            int currency = (int)((damage + player_kills * 1000) * multiplier);
-            
-            char update_player[512];
-            snprintf(update_player, sizeof(update_player),
-                "UPDATE players "
-                "SET currency_amount = currency_amount + %d, "
-                "status = 'online', "
-                "total_damage = total_damage + %d, "
-                "destroyed_vehicles = destroyed_vehicles + %d "
-                "WHERE player_id = ("
-                "  SELECT player_id FROM participants "
-                "  WHERE participant_id = %d)",
-                currency, damage, player_kills, participants[p]);
-            
-            PGresult *pures = PQexec(conn, update_player);
-            PQclear(pures);
-
-            // Обновление танка (30% шанс повреждения если погиб)
-            if(deaths > 0 || (rand() % 100 < 30)) {
-                char update_tank[256];
-                snprintf(update_tank, sizeof(update_tank),
-                    "UPDATE hangars SET status = 'needs_repair' "
-                    "WHERE hangar_id = ("
-                    "  SELECT hangar_id FROM participants "
-                    "  WHERE participant_id = %d)",
-                    participants[p]);
-                
-                PGresult *tres = PQexec(conn, update_tank);
-                PQclear(tres);
-            }
-        }
-
-        // Обновление результата матча
-        char update_match[256];
-        snprintf(update_match, sizeof(update_match),
-            "UPDATE matches SET result = %d WHERE match_id = %d",
-            result, match_id);
-        
-        PGresult *mres = PQexec(conn, update_match);
-        PQclear(mres);
-
-        PQexec(conn, "COMMIT");
-        free(team1_kills_dist);
-        free(team2_kills_dist);
-    }
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
     PQclear(res);
+    return;
+  }
+
+  int match_count = PQntuples(res);
+
+  for (int i = 0; i < match_count; i++) {
+    int match_id = atoi(PQgetvalue(res, i, 0));
+    int tech_level = atoi(PQgetvalue(res, i, 2));
+
+    int participants[6];
+    for (int p = 0; p < 6; p++) {
+      participants[p] = atoi(PQgetvalue(res, i, 3 + p));
+    }
+
+    PQexec(conn, "BEGIN");
+
+    int result = rand() % 3;
+    double multipliers[3] = {1.0, 1.5, 0.5};
+
+    int team1_kills = rand() % 4;
+    int team2_kills = rand() % 4;
+
+    int team1_deaths = team2_kills;
+    int team2_deaths = team1_kills;
+
+    int *team1_kills_dist = distribute_kills(team1_kills, 3);
+    int *team2_kills_dist = distribute_kills(team2_kills, 3);
+
+    for (int p = 0; p < 6; p++) {
+      int team = (p < 3) ? 1 : 2;
+      int player_kills =
+          (p < 3) ? team1_kills_dist[p] : team2_kills_dist[p - 3];
+      int deaths = (team == 1) ? (player_kills > 0 ? 0 : (rand() % 2))
+                               : (player_kills > 0 ? 0 : (rand() % 2));
+
+      int damage = 500 + rand() % 4501 + player_kills * 500;
+
+      char update_participant[512];
+      snprintf(update_participant, sizeof(update_participant),
+               "UPDATE participants SET "
+               "damage_dealt = %d, "
+               "kills = %d, "
+               "is_killed = %s "
+               "WHERE participant_id = %d",
+               damage, player_kills, (deaths == 1) ? "true" : "false",
+               participants[p]);
+
+      PGresult *ures = PQexec(conn, update_participant);
+      PQclear(ures);
+
+      double multiplier = (result == 0)      ? multipliers[0]
+                          : (team == result) ? multipliers[1]
+                                             : multipliers[2];
+
+      int currency = (int)((damage + player_kills * 1000) * multiplier);
+
+      char update_player[512];
+      snprintf(update_player, sizeof(update_player),
+               "UPDATE players "
+               "SET currency_amount = currency_amount + %d, "
+               "status = 'online', "
+               "total_damage = total_damage + %d, "
+               "destroyed_vehicles = destroyed_vehicles + %d "
+               "WHERE player_id = ("
+               "  SELECT player_id FROM participants "
+               "  WHERE participant_id = %d)",
+               currency, damage, player_kills, participants[p]);
+
+      PGresult *pures = PQexec(conn, update_player);
+      PQclear(pures);
+
+      if (deaths > 0 || (rand() % 100 < 30)) {
+        char update_tank[512];
+        snprintf(update_tank, sizeof(update_tank),
+                 "UPDATE hangars SET status = 'needs_repair', "
+                 "game_points = game_points + %d "
+                 "WHERE hangar_id = ("
+                 "  SELECT hangar_id FROM participants "
+                 "  WHERE participant_id = %d)",
+                 damage / 100, participants[p]);
+
+        PGresult *tres = PQexec(conn, update_tank);
+        PQclear(tres);
+      } else {
+        char update_tank[512];
+        snprintf(update_tank, sizeof(update_tank),
+                 "UPDATE hangars SET "
+                 "game_points = game_points + %d "
+                 "WHERE hangar_id = ("
+                 "  SELECT hangar_id FROM participants "
+                 "  WHERE participant_id = %d)",
+                 damage / 100, participants[p]);
+
+        PGresult *tres = PQexec(conn, update_tank);
+        PQclear(tres);
+      }
+    }
+
+    char update_match[256];
+    snprintf(update_match, sizeof(update_match),
+             "UPDATE matches SET result = %d WHERE match_id = %d", result,
+             match_id);
+
+    PGresult *mres = PQexec(conn, update_match);
+    PQclear(mres);
+
+    PQexec(conn, "COMMIT");
+    free(team1_kills_dist);
+    free(team2_kills_dist);
+  }
+  PQclear(res);
 }

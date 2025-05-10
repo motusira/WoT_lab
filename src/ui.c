@@ -24,8 +24,17 @@ Player *pl;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query =
-      "SELECT p.player_id, p.status, p.currency_amount, p.total_damage, "
-      "p.destroyed_vehicles, h.tank_id, ti.type, m.mod_id, h.game_points "
+      "SELECT p.player_id, "
+      "p.status AS player_status, "
+      "h.status AS hangar_status, "
+      "ti.tier, "
+      "p.currency_amount, "
+      "p.total_damage, "
+      "p.destroyed_vehicles, "
+      "h.tank_id, "
+      "ti.type, "
+      "m.mod_id, "
+      "h.game_points "
       "FROM players p "
       "JOIN hangars h USING(player_id) "
       "JOIN tanks t USING(tank_id) "
@@ -56,29 +65,91 @@ void draw_info(PGconn *conn, const char *l) {
   UILabelCreate(&pi_result->e, 0, buff, -1);
   snprintf(buff, 1024, "ID: %s", PQgetvalue(res, 0, 0));
   UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "Status: %s", PQgetvalue(res, 0, 1));
+  snprintf(buff, 1024, "Player Status: %s", PQgetvalue(res, 0, 1));
   UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
+  snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 4));
   UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "Total damage: %s", PQgetvalue(res, 0, 3));
+  snprintf(buff, 1024, "Total damage: %s", PQgetvalue(res, 0, 5));
   UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "Destroyed vehicles: %s", PQgetvalue(res, 0, 4));
+  snprintf(buff, 1024, "Destroyed vehicles: %s", PQgetvalue(res, 0, 6));
   UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
-  UILabelCreate(&pi_result->e, 0, buff, -1);
-  snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |", "Tank ID", "Type",
-           "Modification", "Points");
+
+  // Заголовок таблицы с новыми колонками
+  snprintf(buff, 1024, "| %-8s | %-5s | %-14s | %-12s | %-15s | %-10s |", 
+           "Tank ID", "Tier", "Hangar Status", "Type", "Modification", "Points");
   UILabelCreate(&pi_result->e, 0, buff, -1);
 
   for (int i = 0; i < rows; i++) {
-    snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |",
-             PQgetvalue(res, i, 5), PQgetvalue(res, i, 6),
-             PQgetvalue(res, i, 7), PQgetvalue(res, i, 8));
+    snprintf(buff, 1024, "| %-8s | %-5s | %-14s | %-12s | %-15s | %-10s |",
+             PQgetvalue(res, i, 7),   // tank_id
+             PQgetvalue(res, i, 3),   // tier
+             PQgetvalue(res, i, 2),   // hangar_status
+             PQgetvalue(res, i, 8),   // type
+             PQgetvalue(res, i, 9),   // mod_id
+             PQgetvalue(res, i, 10)); // game_points
     UILabelCreate(&pi_result->e, 0, buff, -1);
   }
 
   PQclear(res);
 }
+
+// void draw_info(PGconn *conn, const char *l) {
+//   const char *query =
+//       "SELECT p.player_id, p.status, p.currency_amount, p.total_damage, "
+//       "p.destroyed_vehicles, h.tank_id, ti.type, m.mod_id, h.game_points "
+//       "FROM players p "
+//       "JOIN hangars h USING(player_id) "
+//       "JOIN tanks t USING(tank_id) "
+//       "JOIN tank_info ti ON t.data_id = ti.data_id "
+//       "JOIN modifications m ON t.mod_id = m.mod_id "
+//       "WHERE p.login = $1";
+//
+//   const char *params[1] = {l};
+//
+//   PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+//
+//   char buff[1024];
+//
+//   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+//     fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+//     PQclear(res);
+//     return;
+//   }
+//
+//   int rows = PQntuples(res);
+//   if (rows == 0) {
+//     snprintf(buff, 1024, "No vehicles found for player: %s", l);
+//     UILabelCreate(&pi_result->e, 0, buff, -1);
+//     return;
+//   }
+//
+//   snprintf(buff, 1024, "Login: %s", l);
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "ID: %s", PQgetvalue(res, 0, 0));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "Status: %s", PQgetvalue(res, 0, 1));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "Total damage: %s", PQgetvalue(res, 0, 3));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "Destroyed vehicles: %s", PQgetvalue(res, 0, 4));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "Currency amount: %s", PQgetvalue(res, 0, 2));
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//   snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |", "Tank ID", "Type",
+//            "Modification", "Points");
+//   UILabelCreate(&pi_result->e, 0, buff, -1);
+//
+//   for (int i = 0; i < rows; i++) {
+//     snprintf(buff, 1024, "| %-8s | %-12s | %-15s | %-10s |",
+//              PQgetvalue(res, i, 5), PQgetvalue(res, i, 6),
+//              PQgetvalue(res, i, 7), PQgetvalue(res, i, 8));
+//     UILabelCreate(&pi_result->e, 0, buff, -1);
+//   }
+//
+//   PQclear(res);
+// }
 
 int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
   if (message == UI_MSG_PRESSED_DESCENDENT) {
