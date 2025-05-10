@@ -8,6 +8,8 @@
 
 #include "../luigi/luigi.h"
 
+PGconn *conn;
+
 UIButton *button, *find_button, *clear_button, *login_button,
     *make_match_button, *update_matches_button;
 UILabel *label;
@@ -15,12 +17,15 @@ UIWindow *window;
 UIPanel *login, *player_info, *pi_ui, *pi_result, *players_list, *match_making;
 UITabPane *admin_pane;
 UITextbox *pi_input;
-UITable *players_table;
+UITable *players_table, *matches_table;
 
 int pl_count;
 int id = 1, rating;
-int selected = -1;
+int selected = -1, match_selected = -1;
 Player *pl;
+
+int matches_count;
+Match *matches;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query =
@@ -95,6 +100,11 @@ void draw_info(PGconn *conn, const char *l) {
 void update_pl(PGconn *conn) {
     free_players(pl, pl_count);
     pl = fetch_all_players(conn, &pl_count);
+}
+
+void update_matches(PGconn *conn) {
+  free_matches(matches);
+  matches = fetch_all_matches(conn, &matches_count);
 }
 
 int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -212,7 +222,68 @@ int UpdateMatchesButtonMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
-void init(PGconn *conn) {
+int MatchesTableMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_TABLE_GET_ITEM) {
+    UITableGetItem *m = (UITableGetItem *)dp;
+    m->isSelected = match_selected == m->index;
+    char *login;
+    int res;
+    switch (m->column) {
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", matches[m->index].match_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%s", matches[m->index].start_time);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%s", matches[m->index].result == 1 ? "Team 1 won " : matches[m->index].result == 2 ? "Team 2 won" : matches[m->index].result == 0 ? "Draw" : "The match is still in progress");
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%d", matches[m->index].tech_level);
+    case 4:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[0]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    case 5:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[1]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    case 6:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[2]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    case 7:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[3]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    case 8:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[4]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    case 9:
+      login = get_nickname_by_participant_id(conn, matches[m->index].participant_ids[5]);
+      res = snprintf(m->buffer, m->bufferBytes, "%s", login);
+      free(login);
+      return res;
+    }
+  } else if (message == UI_MSG_LEFT_DOWN) {
+    int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
+                                element->window->cursorY);
+    if (match_selected != el_hit) {
+      match_selected = el_hit;
+
+      if (!UITableEnsureVisible((UITable *)element, match_selected)) {
+        UIElementRepaint(element, NULL);
+      }
+    }
+  }
+  return 0;
+}
+
+void init() {
   UIInitialise();
   ui.theme = uiThemeClassic;
   UIFontActivate(UIFontCreate("font.ttf", 16));
@@ -225,7 +296,7 @@ void init(PGconn *conn) {
   login_button->e.messageUser = LoginButtonMessage;
 
   admin_pane =
-      UITabPaneCreate(&window->e, 0, "Player info\tPlayers\tMatch making");
+      UITabPaneCreate(&window->e, 0, "Player info\tPlayers\tMatch making\tMatches");
 
   player_info =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING |
@@ -250,7 +321,6 @@ void init(PGconn *conn) {
   players_table->e.messageUser = PlayersTableMessage;
   players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
-  UIButtonCreate(&players_table->e, 0, "some button", -1);
 
   match_making =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
@@ -261,10 +331,19 @@ void init(PGconn *conn) {
       UIButtonCreate(&match_making->e, 0, "Update matches", -1);
   update_matches_button->e.cp = conn;
   update_matches_button->e.messageUser = UpdateMatchesButtonMessage;
+
+  matches = fetch_all_matches(conn, &matches_count);
+  matches_table = UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL, "Match ID\tStart time\tResult\tTech tier\tPlayer 1\tPlayer 2\tPlayer 3\tPlayer 4\tPlayer 5\tPlayer 6");
+  matches_table->e.cp = (void *) matches;
+  matches_table->e.messageUser = MatchesTableMessage;
+  matches_table->itemCount = matches_count;
+  UITableResizeColumns(matches_table);
 }
 
-void ui_start(PGconn *conn) {
-  init(conn);
+void ui_start(PGconn *cn) {
+  conn = cn;
+  init();
   UIMessageLoop();
   free_players(pl, pl_count);
+  free_matches(matches);
 }

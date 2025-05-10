@@ -1,6 +1,8 @@
 #include <libpq-fe.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "../include/matches.h"
 #include "../include/utils.h"
 
 bool create_participants_table(PGconn *conn) {
@@ -274,4 +276,91 @@ void process_completed_matches(PGconn *conn) {
     free(team2_kills_dist);
   }
   PQclear(res);
+}
+
+Match *fetch_all_matches(PGconn *conn, int *match_count) {
+  const char *query = "SELECT match_id, "
+                      "to_char(start_time, 'YYYY-MM-DD HH24:MI:SS'), "
+                      "result, tech_level, "
+                      "participant1, participant2, participant3, "
+                      "participant4, participant5, participant6 "
+                      "FROM matches "
+                      "ORDER BY start_time DESC";
+
+  PGresult *res = PQexec(conn, query);
+  *match_count = 0;
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  if (rows == 0) {
+    PQclear(res);
+    return NULL;
+  }
+
+  Match *matches = malloc(rows * sizeof(Match));
+  if (!matches) {
+    PQclear(res);
+    return NULL;
+  }
+
+  for (int i = 0; i < rows; i++) {
+    matches[i].match_id = atoi(PQgetvalue(res, i, 0));
+
+    strncpy(matches[i].start_time, PQgetvalue(res, i, 1),
+            sizeof(matches[i].start_time) - 1);
+    matches[i].start_time[sizeof(matches[i].start_time) - 1] = '\0';
+
+    matches[i].result = atoi(PQgetvalue(res, i, 2));
+    matches[i].tech_level = atoi(PQgetvalue(res, i, 3));
+
+    for (int p = 0; p < 6; p++) {
+      matches[i].participant_ids[p] = atoi(PQgetvalue(res, i, 4 + p));
+    }
+  }
+
+  *match_count = rows;
+  PQclear(res);
+  return matches;
+}
+
+void free_matches(Match *matches) { free(matches); }
+
+#define MAX_NICKNAME_LENGTH 50
+
+char *get_nickname_by_participant_id(PGconn *conn, int participant_id) {
+  const char *query = "SELECT pl.login "
+                      "FROM participants pa "
+                      "JOIN players pl ON pa.player_id = pl.player_id "
+                      "WHERE pa.participant_id = $1";
+
+  char participant_id_str[16];
+  snprintf(participant_id_str, sizeof(participant_id_str), "%d",
+           participant_id);
+
+  const char *params[1] = {participant_id_str};
+  char *result_nickname = NULL;
+
+  PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  if (rows > 0) {
+    result_nickname = malloc(MAX_NICKNAME_LENGTH);
+    if (result_nickname) {
+      strncpy(result_nickname, PQgetvalue(res, 0, 0), MAX_NICKNAME_LENGTH - 1);
+      result_nickname[MAX_NICKNAME_LENGTH - 1] = '\0';
+    }
+  }
+
+  PQclear(res);
+  return result_nickname;
 }
