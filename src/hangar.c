@@ -181,7 +181,8 @@ TankInfo *get_player_tanks(PGconn *conn, const char *login, int *count) {
                       "m.mod_id, "
                       "h.game_points, "
                       "t.price, "
-                      "t.required_points "
+                      "t.required_points, "
+                      "h.hangar_id "
                       "FROM players p "
                       "JOIN hangars h USING(player_id) "
                       "JOIN tanks t USING(tank_id) "
@@ -231,9 +232,80 @@ TankInfo *get_player_tanks(PGconn *conn, const char *login, int *count) {
     tanks[i].game_points = atoi(PQgetvalue(res, i, 6));
     tanks[i].price = atoi(PQgetvalue(res, i, 7));
     tanks[i].required_points = atoi(PQgetvalue(res, i, 8));
+    tanks[i].hangar_id = atoi(PQgetvalue(res, i, 9));
   }
 
   *count = rows;
   PQclear(res);
   return tanks;
+}
+
+bool repair_tank_by_login(PGconn *conn, const char *login, int h_id,
+                          int r_cost) {
+  PGresult *res;
+  bool success = false;
+
+  PQexec(conn, "BEGIN");
+
+  char hangar_id[20];
+  snprintf(hangar_id, 20, "%d", h_id);
+
+  char repair_cost[20];
+  snprintf(repair_cost, 20, "%d", r_cost);
+
+  const char *check_balance_query =
+      "SELECT p.player_id, p.currency_amount "
+      "FROM players p "
+      "JOIN hangars h ON p.player_id = h.player_id "
+      "WHERE p.login = $1 AND h.hangar_id = $2";
+  const char *params[2] = {login, hangar_id};
+
+  res = PQexecParams(conn, check_balance_query, 2, NULL, params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+
+  int p_id = atoi(PQgetvalue(res, 0, 0));
+  int balance = atoi(PQgetvalue(res, 0, 1));
+  PQclear(res);
+
+  char player_id[20];
+  snprintf(player_id, 20, "%d", p_id);
+
+  if (balance < r_cost) {
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+
+  const char *update_balance_query =
+      "UPDATE players SET currency_amount = currency_amount - $1 "
+      "WHERE login = $2";
+  const char *update_params[2] = {repair_cost, login};
+
+  res = PQexecParams(conn, update_balance_query, 2, NULL, update_params, NULL,
+                     NULL, 0);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+  PQclear(res);
+
+  const char *update_hangar_query = "UPDATE hangars SET status = 'operational' "
+                                    "WHERE hangar_id = $1 AND player_id = $2";
+  const char *hangar_params[2] = {hangar_id, player_id};
+
+  res = PQexecParams(conn, update_hangar_query, 2, NULL, hangar_params, NULL,
+                     NULL, 0);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+  PQclear(res);
+
+  PQexec(conn, "COMMIT");
+  return true;
 }

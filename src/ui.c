@@ -1,7 +1,7 @@
 #include "../include/ui.h"
+#include "../include/hangar.h"
 #include "../include/matches.h"
 #include "../include/players.h"
-#include "../include/hangar.h"
 #include <libpq-fe.h>
 
 #define UI_LINUX
@@ -11,15 +11,20 @@
 
 PGconn *conn;
 
-UIButton *button, *find_button, *clear_button, *login_button, *select_login_button,
-    *make_match_button, *update_matches_button, *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button, *play_button;
-UILabel *label;
+UIButton *button, *find_button, *clear_button, *login_button,
+    *select_login_button, *make_match_button, *update_matches_button,
+    *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
+    *play_button;
+UILabel *label, *player_currency, *selected_tank_from_hangar,
+    *selected_tank_to_buy, *repair_cost_label, *sell_price_label;
 UIWindow *window;
-UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list, *match_making,
-    *reports, *user_panel;
+UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
+    *match_making, *reports, *user_panel_parent, *user_login_panel,
+    *user_panel_hangar_actions, *user_panel_buy_actions;
 UITabPane *admin_pane;
 UITextbox *pi_input, *login_input;
-UITable *players_table, *matches_table, *player_hangar_table, *player_can_buy_table;
+UITable *players_table, *matches_table, *player_hangar_table,
+    *player_can_buy_table;
 UISplitPane *hangar, *actions, *buy;
 
 int pl_count;
@@ -30,11 +35,12 @@ Player *pl;
 int matches_count;
 Match *matches;
 
-char * user;
+char *user;
 
 int tanks_in_hangar;
 TankInfo *tanks;
 int hangar_tank_selected = -1;
+int pc;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query = "SELECT p.player_id, "
@@ -125,13 +131,15 @@ int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
                            void *dp);
 int PlayersTableMessage(UIElement *element, UIMessage message, int di,
                         void *dp);
-int ClearButtonMessage(UIElement *element, UIMessage message, int di,
-                       void *dp);
+int ClearButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
 int FindButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
 int PIInputMessage(UIElement *element, UIMessage message, int di, void *dp);
-int LoginButtonMessage(UIElement *element, UIMessage message, int di,
-                       void *dp);
-int SelectLoginButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
+int LoginButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
+int SelectLoginButtonMessage(UIElement *element, UIMessage message, int di,
+                             void *dp);
+
+void get_repair_cost();
+void get_sell_price();
 
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
@@ -185,34 +193,42 @@ void as_admin(void) {
 }
 
 int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
-                        void *dp) {
+                             void *dp) {
   if (message == UI_MSG_TABLE_GET_ITEM) {
     UITableGetItem *m = (UITableGetItem *)dp;
     m->isSelected = hangar_tank_selected == m->index;
     char buff[256];
     switch (m->column) {
-      case 0:
-        return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].tank_id);
-      case 1:
-        return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].tier);
-      case 2:
-        return snprintf(m->buffer, m->bufferBytes, "%s", tanks[m->index].country);
-      case 3:
-        return snprintf(m->buffer, m->bufferBytes, "%s", tanks[m->index].hangar_status);
-      case 4:
-        return snprintf(m->buffer, m->bufferBytes, "%s", tanks[m->index].type);
-      case 5:
-        return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].mod_id);
-      case 6:
-        return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].game_points);
-      case 7:
-        return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].price);
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].tank_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].tier);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%s", tanks[m->index].country);
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%s",
+                      tanks[m->index].hangar_status);
+    case 4:
+      return snprintf(m->buffer, m->bufferBytes, "%s", tanks[m->index].type);
+    case 5:
+      return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].mod_id);
+    case 6:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      tanks[m->index].game_points);
+    case 7:
+      return snprintf(m->buffer, m->bufferBytes, "%d", tanks[m->index].price);
     }
   } else if (message == UI_MSG_LEFT_DOWN) {
     int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
                                 element->window->cursorY);
     if (hangar_tank_selected != el_hit) {
       hangar_tank_selected = el_hit;
+      char buff[128];
+      snprintf(buff, 128, "Selected %d tank", tanks[hangar_tank_selected].tank_id);
+      UILabelSetContent(selected_tank_from_hangar, buff, -1);
+      get_repair_cost();
+      get_sell_price();
+      // UIElementRefresh(&window->e);
 
       if (!UITableEnsureVisible((UITable *)element, hangar_tank_selected)) {
         UIElementRepaint(element, NULL);
@@ -222,9 +238,31 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+void get_player_currency(const char *l);
+
+void update_tanks() {
+  free(tanks);
+  tanks = get_player_tanks(conn, user, &tanks_in_hangar);
+}
+
+int RepairButtonMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    if (!strcmp(tanks[hangar_tank_selected].hangar_status, "needs_repair")) {
+      repair_tank_by_login(conn, user, tanks[hangar_tank_selected].hangar_id, tanks[hangar_tank_selected].price / 4);
+      get_player_currency(user);
+      update_tanks();
+      UIElementRefresh(&window->e);
+    }
+  }
+  return 0;
+}
+
 void init_login() {
-  login_parent = UIPanelCreate(&window->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
-  login = UIPanelCreate(&login_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
+  login_parent =
+      UIPanelCreate(&window->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  login =
+      UIPanelCreate(&login_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
   login_button = UIButtonCreate(&login->e, 0, "Login as", -1);
   login_button->e.messageUser = LoginButtonMessage;
   select_login_button = UIButtonCreate(&login->e, 0, "Select login", -1);
@@ -232,24 +270,51 @@ void init_login() {
 }
 
 int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
-                               void *dp) {
+                        void *dp) {
   if (message == UI_MSG_CLICKED) {
-    // UIElementDestroy(&hangar->e);
-    // UIElementDestroy(&player_hangar_table->e);
-    // UIElementDestroy(&actions->e);
-    // UIElementDestroy(&user_panel->e);
     UIElementDestroyDescendents(&window->e);
     free(tanks);
+    hangar_tank_selected = -1;
     init_login();
   }
   return 0;
+}
+
+void get_player_currency(const char *l) {
+  const char *params[1] = {l};
+  PGresult *res = PQexecParams(conn, "SELECT p.currency_amount FROM players p WHERE p.login = $1", 1, NULL, params, NULL, NULL, 0);
+  char buff[512];
+  snprintf(buff, 512, "Currency amount: %s", PQgetvalue(res, 0, 0));
+  UILabelSetContent(player_currency, buff, -1);
+}
+
+void get_repair_cost() {
+  if (hangar_tank_selected >= 0) {
+    char buff[512];
+    snprintf(buff, 512, "Repair cost: %d", tanks[hangar_tank_selected].price / 4);
+    UILabelSetContent(repair_cost_label, buff, -1); 
+  } else {
+    UILabelSetContent(repair_cost_label, "", -1); 
+  }
+}
+
+void get_sell_price() {
+  if (hangar_tank_selected >= 0) {
+    char buff[512];
+    snprintf(buff, 512, "Sell price: %d", tanks[hangar_tank_selected].price / 5 * 4);
+    UILabelSetContent(sell_price_label, buff, -1); 
+  } else {
+    UILabelSetContent(sell_price_label, "", -1); 
+  }
 }
 
 void as_user(void) {
   hangar = UISplitPaneCreate(&window->e, 0, 0.50f);
 
   tanks = get_player_tanks(conn, user, &tanks_in_hangar);
-  player_hangar_table = UITableCreate(&hangar->e, 0, "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice");
+  player_hangar_table = UITableCreate(
+      &hangar->e, 0,
+      "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice");
   player_hangar_table->e.messageUser = PlayerHangarTableMessage;
   player_hangar_table->itemCount = tanks_in_hangar;
   UITableResizeColumns(player_hangar_table);
@@ -257,18 +322,49 @@ void as_user(void) {
   actions = UISplitPaneCreate(&hangar->e, UI_SPLIT_PANE_VERTICAL, 0.50f);
 
   char buff[512];
-  user_panel = UIPanelCreate(&actions->e, UI_PANEL_COLOR_1);
+  user_panel_parent =
+      UIPanelCreate(&actions->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
 
   UIPanelCreate(&actions->e, UI_PANEL_COLOR_1);
 
-  snprintf(buff, 512, "Logged as %s", user);
-  UILabelCreate(&user_panel->e, 0, buff, -1);
+  user_login_panel = UIPanelCreate(&user_panel_parent->e,
+                                   UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
 
-  repair_button = UIButtonCreate(&user_panel->e, 0, "Repair selected vehicle", -1);
-  sell_button = UIButtonCreate(&user_panel->e, 0, "Sell selected vehicle", -1);
-  buy_button = UIButtonCreate(&user_panel->e, 0, "Buy selected vehicle", -1);
-  logout_button = UIButtonCreate(&user_panel->e, 0, "Logout", -1);
+  UILabelCreate(&user_login_panel->e, 0, user, -1);
+  UISpacerCreate(&user_login_panel->e, 0, 30, 1);
+
+  logout_button = UIButtonCreate(&user_login_panel->e, 0, "Logout", -1);
   logout_button->e.messageUser = LogoutButtonMessage;
+
+  player_currency = UILabelCreate(&user_panel_parent->e, 0, "", -1);
+  get_player_currency(user);
+
+  UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
+
+  selected_tank_from_hangar = UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
+
+  user_panel_hangar_actions = UIPanelCreate(
+      &user_panel_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
+
+  repair_button =
+      UIButtonCreate(&user_panel_hangar_actions->e, 0, "Repair", -1);
+  repair_button->e.messageUser = RepairButtonMessage;
+  sell_button = UIButtonCreate(&user_panel_hangar_actions->e, 0, "Sell", -1);
+
+  repair_cost_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
+  sell_price_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
+
+  UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
+
+  selected_tank_to_buy = UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
+
+
+  user_panel_buy_actions = UIPanelCreate(
+      &user_panel_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
+
+  buy_button =
+      UIButtonCreate(&user_panel_buy_actions->e, 0, "Buy selected vehicle", -1);
+
 }
 
 void process_login(void) {
@@ -304,12 +400,13 @@ void LoginMenuCallback(void *cp) {
 }
 
 int SelectLoginButtonMessage(UIElement *element, UIMessage message, int di,
-                       void *dp) {
+                             void *dp) {
   if (message == UI_MSG_CLICKED) {
     UIMenu *login_menu = UIMenuCreate(element, 0);
     UIMenuAddItem(login_menu, 0, "admin", -1, LoginMenuCallback, "admin");
     for (int i = 0; i < pl_count; i++) {
-      UIMenuAddItem(login_menu, 0, pl[i].login, -1, LoginMenuCallback, pl[i].login);
+      UIMenuAddItem(login_menu, 0, pl[i].login, -1, LoginMenuCallback,
+                    pl[i].login);
     }
     UIMenuShow(login_menu);
   }
