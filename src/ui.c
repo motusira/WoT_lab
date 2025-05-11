@@ -299,6 +299,7 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
     UIElementDestroyDescendents(&window->e);
     free(tanks);
     hangar_tank_selected = -1;
+    user = NULL;
     init_login();
   }
   return 0;
@@ -415,10 +416,12 @@ int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 int LoginButtonMessage(UIElement *element, UIMessage message, int di,
                        void *dp) {
   if (message == UI_MSG_CLICKED) {
-    UIElementDestroy(element);
-    UIElementDestroy(element->parent);
-    UIElementDestroy(&login_parent->e);
-    process_login();
+    if (user != NULL) {
+      UIElementDestroy(element);
+      UIElementDestroy(element->parent);
+      UIElementDestroy(&login_parent->e);
+      process_login();
+    }
   }
   return 0;
 }
