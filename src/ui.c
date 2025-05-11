@@ -224,8 +224,13 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
     if (hangar_tank_selected != el_hit) {
       hangar_tank_selected = el_hit;
       char buff[128];
-      snprintf(buff, 128, "Selected %d tank", tanks[hangar_tank_selected].tank_id);
-      UILabelSetContent(selected_tank_from_hangar, buff, -1);
+      if (hangar_tank_selected >= 0) {
+        snprintf(buff, 128, "Selected %d tank",
+                 tanks[hangar_tank_selected].tank_id);
+        UILabelSetContent(selected_tank_from_hangar, buff, -1);
+      } else {
+        UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
+      }
       get_repair_cost();
       get_sell_price();
       // UIElementRefresh(&window->e);
@@ -248,10 +253,29 @@ void update_tanks() {
 int RepairButtonMessage(UIElement *element, UIMessage message, int di,
                         void *dp) {
   if (message == UI_MSG_CLICKED) {
-    if (!strcmp(tanks[hangar_tank_selected].hangar_status, "needs_repair")) {
-      repair_tank_by_login(conn, user, tanks[hangar_tank_selected].hangar_id, tanks[hangar_tank_selected].price / 4);
+    if (hangar_tank_selected >= 0 &&
+        !strcmp(tanks[hangar_tank_selected].hangar_status, "needs_repair")) {
+      repair_tank_by_login(conn, user, tanks[hangar_tank_selected].hangar_id,
+                           tanks[hangar_tank_selected].price / 4);
       get_player_currency(user);
       update_tanks();
+      UIElementRefresh(&window->e);
+    }
+  }
+  return 0;
+}
+
+int SellButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    if (hangar_tank_selected >= 0) {
+      sell_tank_by_login(conn, user, tanks[hangar_tank_selected].hangar_id,
+                         tanks[hangar_tank_selected].price / 5 * 4);
+      get_player_currency(user);
+      update_tanks();
+      hangar_tank_selected = -1;
+      UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
+      player_hangar_table->itemCount = tanks_in_hangar;
+      UITableResizeColumns(player_hangar_table);
       UIElementRefresh(&window->e);
     }
   }
@@ -282,7 +306,9 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
 
 void get_player_currency(const char *l) {
   const char *params[1] = {l};
-  PGresult *res = PQexecParams(conn, "SELECT p.currency_amount FROM players p WHERE p.login = $1", 1, NULL, params, NULL, NULL, 0);
+  PGresult *res = PQexecParams(
+      conn, "SELECT p.currency_amount FROM players p WHERE p.login = $1", 1,
+      NULL, params, NULL, NULL, 0);
   char buff[512];
   snprintf(buff, 512, "Currency amount: %s", PQgetvalue(res, 0, 0));
   UILabelSetContent(player_currency, buff, -1);
@@ -291,20 +317,22 @@ void get_player_currency(const char *l) {
 void get_repair_cost() {
   if (hangar_tank_selected >= 0) {
     char buff[512];
-    snprintf(buff, 512, "Repair cost: %d", tanks[hangar_tank_selected].price / 4);
-    UILabelSetContent(repair_cost_label, buff, -1); 
+    snprintf(buff, 512, "Repair cost: %d",
+             tanks[hangar_tank_selected].price / 4);
+    UILabelSetContent(repair_cost_label, buff, -1);
   } else {
-    UILabelSetContent(repair_cost_label, "", -1); 
+    UILabelSetContent(repair_cost_label, "", -1);
   }
 }
 
 void get_sell_price() {
   if (hangar_tank_selected >= 0) {
     char buff[512];
-    snprintf(buff, 512, "Sell price: %d", tanks[hangar_tank_selected].price / 5 * 4);
-    UILabelSetContent(sell_price_label, buff, -1); 
+    snprintf(buff, 512, "Sell price: %d",
+             tanks[hangar_tank_selected].price / 5 * 4);
+    UILabelSetContent(sell_price_label, buff, -1);
   } else {
-    UILabelSetContent(sell_price_label, "", -1); 
+    UILabelSetContent(sell_price_label, "", -1);
   }
 }
 
@@ -341,7 +369,8 @@ void as_user(void) {
 
   UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
 
-  selected_tank_from_hangar = UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
+  selected_tank_from_hangar =
+      UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
 
   user_panel_hangar_actions = UIPanelCreate(
       &user_panel_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
@@ -350,21 +379,21 @@ void as_user(void) {
       UIButtonCreate(&user_panel_hangar_actions->e, 0, "Repair", -1);
   repair_button->e.messageUser = RepairButtonMessage;
   sell_button = UIButtonCreate(&user_panel_hangar_actions->e, 0, "Sell", -1);
+  sell_button->e.messageUser = SellButtonMessage;
 
   repair_cost_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
   sell_price_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
 
   UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
 
-  selected_tank_to_buy = UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
-
+  selected_tank_to_buy =
+      UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
 
   user_panel_buy_actions = UIPanelCreate(
       &user_panel_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
 
   buy_button =
       UIButtonCreate(&user_panel_buy_actions->e, 0, "Buy selected vehicle", -1);
-
 }
 
 void process_login(void) {

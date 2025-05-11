@@ -14,8 +14,9 @@ bool create_hangars_table(PGconn *conn) {
       "game_points INT NOT NULL DEFAULT 0,"
       "status VARCHAR(20) NOT NULL CHECK(status IN ('operational', "
       "'needs_repair')),"
-      "UNIQUE(player_id, tank_id)"
-      ")");
+      "is_sold BOOLEAN NOT NULL DEFAULT FALSE,"
+      "UNIQUE(player_id, tank_id))");
+
   return handle_res_command(conn, res);
 }
 
@@ -188,7 +189,7 @@ TankInfo *get_player_tanks(PGconn *conn, const char *login, int *count) {
                       "JOIN tanks t USING(tank_id) "
                       "JOIN tank_info ti ON t.data_id = ti.data_id "
                       "JOIN modifications m ON t.mod_id = m.mod_id "
-                      "WHERE p.login = $1";
+                      "WHERE p.login = $1 AND h.is_sold = FALSE";
 
   const char *params[1] = {login};
   *count = 0;
@@ -302,6 +303,83 @@ bool repair_tank_by_login(PGconn *conn, const char *login, int h_id,
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     PQclear(res);
     PQexec(conn, "ROLLBACK");
+    return false;
+  }
+  PQclear(res);
+
+  PQexec(conn, "COMMIT");
+  return true;
+}
+
+bool sell_tank_by_login(PGconn *conn, const char *login, int h_id,
+                        int s_price) {
+  PGresult *res;
+
+  if (s_price < 0) {
+    fprintf(stderr, "Invalid price value: %d\n", s_price);
+    return false;
+  }
+
+  PQexec(conn, "BEGIN");
+
+  const char *check_ownership_query =
+      "SELECT h.player_id "
+      "FROM hangars h "
+      "JOIN players p ON h.player_id = p.player_id "
+      "WHERE h.hangar_id = $1 "
+      "  AND p.login = $2 "
+      "  AND h.is_sold = FALSE";
+
+  char hangar_id[20];
+  snprintf(hangar_id, 20, "%d", h_id);
+  char sell_price[20];
+  snprintf(sell_price, 20, "%d", s_price);
+
+  const char *params[2] = {hangar_id, login};
+
+  res =
+      PQexecParams(conn, check_ownership_query, 2, NULL, params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    fprintf(stderr, "Ownership check failed\n");
+    return false;
+  }
+
+  int p_id = atoi(PQgetvalue(res, 0, 0));
+
+  char player_id[20];
+  snprintf(player_id, 20, "%d", p_id);
+
+  PQclear(res);
+
+  const char *mark_sold_query = "UPDATE hangars SET "
+                                "is_sold = TRUE, "
+                                "status = 'needs_repair' "
+                                "WHERE hangar_id = $1";
+
+  const char *mark_params[1] = {hangar_id};
+  res =
+      PQexecParams(conn, mark_sold_query, 1, NULL, mark_params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    fprintf(stderr, "Mark as sold failed\n");
+    return false;
+  }
+  PQclear(res);
+
+  const char *add_balance_query =
+      "UPDATE players SET currency_amount = currency_amount + $1 "
+      "WHERE player_id = $2";
+
+  const char *add_params[2] = {sell_price, player_id};
+  res =
+      PQexecParams(conn, add_balance_query, 2, NULL, add_params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    fprintf(stderr, "Balance update failed\n");
     return false;
   }
   PQclear(res);
