@@ -20,7 +20,7 @@ UILabel *label, *player_currency, *selected_tank_from_hangar,
 UIWindow *window;
 UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
     *match_making, *reports, *user_panel_parent, *user_login_panel,
-    *user_panel_hangar_actions, *user_panel_buy_actions;
+    *user_panel_hangar_actions, *user_panel_buy_actions, *admin_logout;
 UITabPane *admin_pane;
 UITextbox *pi_input, *login_input;
 UITable *players_table, *matches_table, *player_hangar_table,
@@ -141,9 +141,13 @@ int SelectLoginButtonMessage(UIElement *element, UIMessage message, int di,
 void get_repair_cost();
 void get_sell_price();
 
+int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
+                        void *dp);
+
+
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
-      &window->e, 0, "Player info\tPlayers\tMatch making\tMatches\tReports");
+      &window->e, 0, "Player info\tPlayers\tMatch making\tMatches\tReports\tLogout");
 
   player_info =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING |
@@ -190,6 +194,10 @@ void as_admin(void) {
 
   reports =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+
+  admin_logout = UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1);
+  logout_button = UIButtonCreate(&admin_logout->e, 0, "Logout", -1);
+  logout_button->e.messageUser = LogoutButtonMessage;
 }
 
 int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
