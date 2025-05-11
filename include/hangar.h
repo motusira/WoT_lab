@@ -4,6 +4,18 @@
 #include <libpq-fe.h>
 #include <stdbool.h>
 
+typedef struct {
+    int tank_id;
+    int tier;
+    char country[50];
+    char hangar_status[20];
+    char type[20];
+    int mod_id;
+    int game_points;
+    int price;
+    int required_points;
+} TankInfo;
+
 bool create_hangars_table(PGconn *conn);
 bool create_modifications_table(PGconn *conn);
 bool create_tank_info_table(PGconn *conn);
@@ -12,5 +24,6 @@ bool fill_hangars_table(PGconn *conn);
 bool fill_tank_info_table(PGconn *conn);
 bool fill_modifications_table(PGconn *conn);
 bool fill_tanks_table(PGconn *conn);
+TankInfo* get_player_tanks(PGconn *conn, const char *login, int *count);
 
 #endif

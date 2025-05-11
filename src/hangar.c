@@ -2,6 +2,7 @@
 #include "../include/utils.h"
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 bool create_hangars_table(PGconn *conn) {
   PGresult *res = PQexec(
@@ -131,12 +132,11 @@ bool _fill_tank_modifications(PGconn *conn) {
           data_id_str, (char[2]){mod_id + '0', '\0'}, // mod_id как строка
           price_str, points_str};
 
-      PGresult *insert_res =
-          PQexecParams(conn,
-                       "INSERT INTO tanks(data_id, mod_id, "
-                       "price, required_points) "
-                       "VALUES($1, $2, $3, $4)",
-                       4, NULL, params, NULL, NULL, 0);
+      PGresult *insert_res = PQexecParams(conn,
+                                          "INSERT INTO tanks(data_id, mod_id, "
+                                          "price, required_points) "
+                                          "VALUES($1, $2, $3, $4)",
+                                          4, NULL, params, NULL, NULL, 0);
 
       if (PQresultStatus(insert_res) != PGRES_COMMAND_OK) {
         fprintf(stderr, "Insert failed: %s\n", PQerrorMessage(conn));
@@ -169,4 +169,71 @@ bool fill_tanks_table(PGconn *conn) {
   } else {
     return true;
   }
+}
+
+TankInfo *get_player_tanks(PGconn *conn, const char *login, int *count) {
+  const char *query = "SELECT "
+                      "h.tank_id, "
+                      "ti.tier, "
+                      "ti.country, "
+                      "h.status, "
+                      "ti.type, "
+                      "m.mod_id, "
+                      "h.game_points, "
+                      "t.price, "
+                      "t.required_points "
+                      "FROM players p "
+                      "JOIN hangars h USING(player_id) "
+                      "JOIN tanks t USING(tank_id) "
+                      "JOIN tank_info ti ON t.data_id = ti.data_id "
+                      "JOIN modifications m ON t.mod_id = m.mod_id "
+                      "WHERE p.login = $1";
+
+  const char *params[1] = {login};
+  *count = 0;
+
+  PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  if (rows == 0) {
+    PQclear(res);
+    return NULL;
+  }
+
+  TankInfo *tanks = malloc(rows * sizeof(TankInfo));
+  if (!tanks) {
+    PQclear(res);
+    return NULL;
+  }
+
+  for (int i = 0; i < rows; i++) {
+    tanks[i].tank_id = atoi(PQgetvalue(res, i, 0));
+    tanks[i].tier = atoi(PQgetvalue(res, i, 1));
+
+    strncpy(tanks[i].country, PQgetvalue(res, i, 2),
+            sizeof(tanks[i].country) - 1);
+    tanks[i].country[sizeof(tanks[i].country) - 1] = '\0';
+
+    strncpy(tanks[i].hangar_status, PQgetvalue(res, i, 3),
+            sizeof(tanks[i].hangar_status) - 1);
+    tanks[i].hangar_status[sizeof(tanks[i].hangar_status) - 1] = '\0';
+
+    strncpy(tanks[i].type, PQgetvalue(res, i, 4), sizeof(tanks[i].type) - 1);
+    tanks[i].type[sizeof(tanks[i].type) - 1] = '\0';
+
+    tanks[i].mod_id = atoi(PQgetvalue(res, i, 5));
+    tanks[i].game_points = atoi(PQgetvalue(res, i, 6));
+    tanks[i].price = atoi(PQgetvalue(res, i, 7));
+    tanks[i].required_points = atoi(PQgetvalue(res, i, 8));
+  }
+
+  *count = rows;
+  PQclear(res);
+  return tanks;
 }
