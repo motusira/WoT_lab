@@ -116,6 +116,8 @@ void update_pl(PGconn *conn) {
 void update_matches(PGconn *conn) {
   free_matches(matches);
   matches = fetch_all_matches(conn, &matches_count);
+  matches_table->itemCount = matches_count;
+  UITableResizeColumns(matches_table);
 }
 
 void as_admin(void) {
