@@ -28,12 +28,12 @@ int selected = -1, match_selected = -1;
 Player *pl;
 
 int matches_count;
-Match *matches;
+Match *matches = NULL;
 
 char *user = NULL;
 
 int tanks_in_hangar;
-TankInfo *tanks;
+TankInfo *tanks = NULL;
 int hangar_tank_selected = -1;
 int pc;
 
@@ -108,12 +108,16 @@ void draw_info(PGconn *conn, const char *l) {
 }
 
 void update_pl(PGconn *conn) {
-  free_players(pl, pl_count);
+  if (pl != NULL) {
+    free_players(pl, pl_count);
+  }
   pl = fetch_all_players(conn, &pl_count);
 }
 
 void update_matches(PGconn *conn) {
-  free_matches(matches);
+  if (matches != NULL) {
+    free(matches);
+  }
   matches = fetch_all_matches(conn, &matches_count);
   matches_table->itemCount = matches_count;
   UITableResizeColumns(matches_table);
@@ -121,7 +125,8 @@ void update_matches(PGconn *conn) {
 
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
-      &window->e, 0, "Player info\tPlayers\tMatch making\tMatches\tReports\tLogout");
+      &window->e, 0,
+      "Player info\tPlayers\tMatch making\tMatches\tReports\tLogout");
 
   player_info =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING |
@@ -143,6 +148,7 @@ void as_admin(void) {
                                 "amount\tTotal damage\tDestroyed vehicles");
   players_table->e.cp = (void *)pl;
   players_table->e.messageUser = PlayersTableMessage;
+  update_pl(conn);
   players_table->itemCount = pl_count;
   UITableResizeColumns(players_table);
 
@@ -156,13 +162,13 @@ void as_admin(void) {
   update_matches_button->e.cp = conn;
   update_matches_button->e.messageUser = UpdateMatchesButtonMessage;
 
-  matches = fetch_all_matches(conn, &matches_count);
   matches_table =
       UITableCreate(&admin_pane->e, UI_ELEMENT_H_FILL,
                     "Match ID\tStart time\tResult\tTech tier\tPlayer 1\tPlayer "
                     "2\tPlayer 3\tPlayer 4\tPlayer 5\tPlayer 6");
   matches_table->e.cp = (void *)matches;
   matches_table->e.messageUser = MatchesTableMessage;
+  update_matches(conn);
   matches_table->itemCount = matches_count;
   UITableResizeColumns(matches_table);
 
@@ -226,7 +232,9 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
 }
 
 void update_tanks() {
-  free(tanks);
+  if (tanks != NULL) {
+    free(tanks);
+  }
   tanks = get_player_tanks(conn, user, &tanks_in_hangar);
 }
 
@@ -277,9 +285,6 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
                         void *dp) {
   if (message == UI_MSG_CLICKED) {
     UIElementDestroyDescendents(&window->e);
-    if (!strcmp(user, "admin")) {
-      free(tanks);
-    }
     hangar_tank_selected = -1;
     user = NULL;
     init_login();
@@ -322,7 +327,7 @@ void get_sell_price() {
 void as_user(void) {
   hangar = UISplitPaneCreate(&window->e, 0, 0.50f);
 
-  tanks = get_player_tanks(conn, user, &tanks_in_hangar);
+  update_tanks();
   player_hangar_table = UITableCreate(
       &hangar->e, 0,
       "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice");
@@ -604,11 +609,11 @@ int MatchesTableMessage(UIElement *element, UIMessage message, int di,
 void init() {
   UIInitialise();
   ui.theme = uiThemeClassic;
-  UIFontActivate(UIFontCreate("font.ttf", 16));
+  UIFontActivate(UIFontCreate("font.ttf", 18));
 
   pl = fetch_all_players(conn, &pl_count);
 
-  window = UIWindowCreate(0, 0, "WoT", 640, 480);
+  window = UIWindowCreate(0, 0, "WoT", 640 * 2, 480 * 2);
   window->e.messageUser = WindowMessage;
 
   init_login();
