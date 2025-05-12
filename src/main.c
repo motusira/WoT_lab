@@ -6,7 +6,7 @@
 
 #include "../include/hangar.h"
 #include "../include/players.h"
-#include "../include/ui.h"
+#include "../include/ui_export.h"
 #include "../include/matches.h"
 
 PGconn *connect_to_db(const char *conninfo) {

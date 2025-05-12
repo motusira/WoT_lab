@@ -4,10 +4,6 @@
 #include "../include/players.h"
 #include <libpq-fe.h>
 
-#define UI_LINUX
-#define UI_IMPLEMENTATION
-
-#include "../luigi/luigi.h"
 
 PGconn *conn;
 
@@ -122,29 +118,6 @@ void update_matches(PGconn *conn) {
   matches = fetch_all_matches(conn, &matches_count);
 }
 
-int UpdateMatchesButtonMessage(UIElement *element, UIMessage message, int di,
-                               void *dp);
-
-int MatchesTableMessage(UIElement *element, UIMessage message, int di,
-                        void *dp);
-int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
-                           void *dp);
-int PlayersTableMessage(UIElement *element, UIMessage message, int di,
-                        void *dp);
-int ClearButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
-int FindButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
-int PIInputMessage(UIElement *element, UIMessage message, int di, void *dp);
-int LoginButtonMessage(UIElement *element, UIMessage message, int di, void *dp);
-int SelectLoginButtonMessage(UIElement *element, UIMessage message, int di,
-                             void *dp);
-
-void get_repair_cost();
-void get_sell_price();
-
-int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
-                        void *dp);
-
-
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
       &window->e, 0, "Player info\tPlayers\tMatch making\tMatches\tReports\tLogout");
@@ -250,8 +223,6 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
   }
   return 0;
 }
-
-void get_player_currency(const char *l);
 
 void update_tanks() {
   free(tanks);
