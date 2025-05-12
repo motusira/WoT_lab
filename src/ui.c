@@ -4,7 +4,6 @@
 #include "../include/players.h"
 #include <libpq-fe.h>
 
-
 PGconn *conn;
 
 UIButton *button, *find_button, *clear_button, *login_button,
@@ -31,7 +30,7 @@ Player *pl;
 int matches_count;
 Match *matches;
 
-char *user;
+char *user = NULL;
 
 int tanks_in_hangar;
 TankInfo *tanks;
@@ -278,7 +277,9 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
                         void *dp) {
   if (message == UI_MSG_CLICKED) {
     UIElementDestroyDescendents(&window->e);
-    free(tanks);
+    if (!strcmp(user, "admin")) {
+      free(tanks);
+    }
     hangar_tank_selected = -1;
     user = NULL;
     init_login();
