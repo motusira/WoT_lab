@@ -166,7 +166,8 @@ Player *fetch_all_players(PGconn *conn, int *player_count) {
     players[i].currency_amount = atof(PQgetvalue(res, i, 3));
     players[i].total_damage = atoi(PQgetvalue(res, i, 4));
     players[i].destroyed_vehicles = atoi(PQgetvalue(res, i, 5));
-    players[i].rating = players[i].total_damage / 1000 + players[i].destroyed_vehicles * 10;
+    players[i].rating =
+        players[i].total_damage / 1000 + players[i].destroyed_vehicles * 10;
   }
 
   PQclear(res);
@@ -219,4 +220,54 @@ void sort_players(Player *players, int count, SortCriteria criteria,
           (order == SORT_ASC) ? compare_by_rating_asc : compare_by_rating_desc);
     break;
   }
+}
+
+bool create_player(PGconn *conn, const char *login) {
+  if (strlen(login) == 0 || strlen(login) > 32) {
+    fprintf(stderr, "Invalid login length\n");
+    return false;
+  }
+
+  PGresult *res;
+  bool success = false;
+
+  PQexec(conn, "BEGIN");
+
+  const char *check_query = "SELECT player_id FROM players WHERE login = $1";
+  const char *check_params[1] = {login};
+
+  res = PQexecParams(conn, check_query, 1, NULL, check_params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Check query failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+
+  if (PQntuples(res) > 0) {
+    fprintf(stderr, "Player with login '%s' already exists\n", login);
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+  PQclear(res);
+
+  const char *insert_query =
+      "INSERT INTO players (login, status, currency_amount) "
+      "VALUES ($1, 'online', 30000) "
+      "RETURNING player_id";
+
+  const char *insert_params[1] = {login};
+
+  res = PQexecParams(conn, insert_query, 1, NULL, insert_params, NULL, NULL, 0);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Insert failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    PQexec(conn, "ROLLBACK");
+    return false;
+  }
+
+  PQexec(conn, "COMMIT");
+  PQclear(res);
+  return true;
 }

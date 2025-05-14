@@ -9,15 +9,16 @@ PGconn *conn;
 UIButton *button, *find_button, *clear_button, *login_button,
     *select_login_button, *make_match_button, *update_matches_button,
     *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
-    *play_button;
+    *play_button, *register_button;
 UILabel *label, *player_currency, *selected_tank_from_hangar,
     *selected_tank_to_buy, *repair_cost_label, *sell_price_label;
 UIWindow *window;
 UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
     *match_making, *reports, *user_panel_parent, *user_login_panel,
-    *user_panel_hangar_actions, *user_panel_buy_actions, *admin_logout;
+    *user_panel_hangar_actions, *user_panel_buy_actions, *admin_logout,
+    *register_panel;
 UITabPane *admin_pane;
-UITextbox *pi_input, *login_input;
+UITextbox *pi_input, *register_input;
 UITable *players_table, *matches_table, *player_hangar_table,
     *player_can_buy_table;
 UISplitPane *hangar, *actions, *buy;
@@ -270,6 +271,29 @@ int SellButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
   return 0;
 }
 
+int RegisterButtonMessage(UIElement *element, UIMessage message, int di,
+                          void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    char *b = UITextboxToCString(register_input);
+    if (strcmp(b, "admin")) {
+      if (create_player(conn, b)) {
+        update_pl(conn);
+        for (int i = 0; i < pl_count; i++) {
+          if (!strcmp(b, pl[i].login)) {
+            user = pl[i].login;
+            break;
+          }
+        }
+        UIElementDestroyDescendents(&window->e);
+        process_login();
+      }
+    }
+    UI_FREE(b);
+    UITextboxClear(register_input, false);
+  }
+  return 0;
+}
+
 void init_login() {
   login_parent =
       UIPanelCreate(&window->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
@@ -279,6 +303,12 @@ void init_login() {
   login_button->e.messageUser = LoginButtonMessage;
   select_login_button = UIButtonCreate(&login->e, 0, "Select login", -1);
   select_login_button->e.messageUser = SelectLoginButtonMessage;
+  UISpacerCreate(&login_parent->e, 0, 1, 50);
+  register_panel =
+      UIPanelCreate(&login_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
+  register_input = UITextboxCreate(&register_panel->e, 0);
+  register_button = UIButtonCreate(&register_panel->e, 0, "Create account", -1);
+  register_button->e.messageUser = RegisterButtonMessage;
 }
 
 int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
@@ -404,9 +434,7 @@ int LoginButtonMessage(UIElement *element, UIMessage message, int di,
                        void *dp) {
   if (message == UI_MSG_CLICKED) {
     if (user != NULL) {
-      UIElementDestroy(element);
-      UIElementDestroy(element->parent);
-      UIElementDestroy(&login_parent->e);
+      UIElementDestroyDescendents(&window->e);
       process_login();
     }
   }

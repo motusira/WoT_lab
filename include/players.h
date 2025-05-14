@@ -27,5 +27,6 @@ void free_players(Player *players, int count);
 Player *fetch_all_players(PGconn *conn, int *player_count);
 void sort_players(Player *players, int count, SortCriteria criteria,
                   SortOrder order);
+bool create_player(PGconn *conn, const char *login);
 
 #endif
