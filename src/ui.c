@@ -33,9 +33,9 @@ Match *matches = NULL;
 
 char *user = NULL;
 
-int tanks_in_hangar;
-TankInfo *tanks = NULL;
-int hangar_tank_selected = -1;
+int tanks_in_hangar, can_buy_tanks;
+TankInfo *tanks = NULL, *buyable_tanks = NULL;
+int hangar_tank_selected = -1, buy_selected = -1;
 int pc;
 
 void draw_info(PGconn *conn, const char *l) {
@@ -232,11 +232,61 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+int PlayerCanBuyTableMessage(UIElement *element, UIMessage message, int di,
+                             void *dp) {
+  if (message == UI_MSG_TABLE_GET_ITEM) {
+    UITableGetItem *m = (UITableGetItem *)dp;
+    m->isSelected = buy_selected == m->index;
+    char buff[256];
+    switch (m->column) {
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].tank_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].tier);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%s", buyable_tanks[m->index].country);
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%s", buyable_tanks[m->index].type);
+    case 4:
+      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].mod_id);
+    case 5:
+      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].required_points);
+    case 6:
+      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].price);
+    }
+  } else if (message == UI_MSG_LEFT_DOWN) {
+    int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
+                                element->window->cursorY);
+    if (buy_selected != el_hit) {
+      buy_selected = el_hit;
+      char buff[128];
+      if (buy_selected >= 0) {
+        snprintf(buff, 128, "Selected %d tank",
+                 buyable_tanks[buy_selected].tank_id);
+        UILabelSetContent(selected_tank_from_hangar, buff, -1);
+      } else {
+        UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
+      }
+      get_repair_cost();
+      get_sell_price();
+
+      if (!UITableEnsureVisible((UITable *)element, buy_selected)) {
+        UIElementRepaint(element, NULL);
+      }
+    }
+  }
+  return 0;
+}
+
 void update_tanks() {
   if (tanks != NULL) {
     free(tanks);
   }
+  if (buyable_tanks != NULL) {
+    free(buyable_tanks);
+  }
   tanks = get_player_tanks(conn, user, &tanks_in_hangar);
+  buyable_tanks = get_available_tanks(conn, user, &can_buy_tanks);
 }
 
 int RepairButtonMessage(UIElement *element, UIMessage message, int di,
@@ -360,7 +410,7 @@ void as_user(void) {
   update_tanks();
   player_hangar_table = UITableCreate(
       &hangar->e, 0,
-      "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice");
+      "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice (Sell)");
   player_hangar_table->e.messageUser = PlayerHangarTableMessage;
   player_hangar_table->itemCount = tanks_in_hangar;
   UITableResizeColumns(player_hangar_table);
@@ -371,7 +421,12 @@ void as_user(void) {
   user_panel_parent =
       UIPanelCreate(&actions->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
 
-  UIPanelCreate(&actions->e, UI_PANEL_COLOR_1);
+  printf("T %d\n", can_buy_tanks);
+
+  player_can_buy_table = UITableCreate(&actions->e, 0, "Tank ID\tTier\tCountry\tType\tModification\tRequired points\tPrice");
+  player_can_buy_table->e.messageUser = PlayerCanBuyTableMessage;
+  player_can_buy_table->itemCount = can_buy_tanks;
+  UITableResizeColumns(player_can_buy_table);
 
   user_login_panel = UIPanelCreate(&user_panel_parent->e,
                                    UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);

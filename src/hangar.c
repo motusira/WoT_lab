@@ -1,5 +1,6 @@
 #include "../include/hangar.h"
 #include "../include/utils.h"
+#include <libpq-fe.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -386,4 +387,86 @@ bool sell_tank_by_login(PGconn *conn, const char *login, int h_id,
 
   PQexec(conn, "COMMIT");
   return true;
+}
+
+TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count) {
+  const char *query =
+      "WITH player_tanks AS ("
+      "  SELECT "
+      "    t.data_id, "
+      "    t.mod_id, "
+      "    h.game_points, "
+      "    ti.tier, "
+      "    ti.country, "
+      "    ti.type "
+      "  FROM hangars h "
+      "  JOIN tanks t ON h.tank_id = t.tank_id "
+      "  JOIN tank_info ti ON t.data_id = ti.data_id "
+      "  JOIN players p ON h.player_id = p.player_id "
+      "  WHERE p.login = $1 AND h.is_sold = FALSE"
+      "), "
+      "available_tanks AS ("
+      "  SELECT t.tank_id, t.data_id, t.mod_id, t.price, t.required_points, "
+      "         ti.country, ti.type, ti.tier "
+      "  FROM tanks t "
+      "  JOIN tank_info ti ON t.data_id = ti.data_id "
+      "  WHERE ti.tier = 1 "
+      "    AND t.mod_id = 1 "
+      "    AND NOT EXISTS ("
+      "      SELECT 1 FROM player_tanks pt "
+      "      WHERE pt.data_id = t.data_id"
+      "    ) "
+      "  UNION ALL "
+      "  SELECT t.tank_id, t.data_id, t.mod_id, t.price, t.required_points, "
+      "         ti.country, ti.type, ti.tier "
+      "  FROM tanks t "
+      "  JOIN tank_info ti ON t.data_id = ti.data_id "
+      "  JOIN player_tanks pt ON t.data_id = pt.data_id "
+      "  WHERE t.mod_id = pt.mod_id + 1 "
+      "  UNION ALL "
+      "  SELECT t.tank_id, t.data_id, t.mod_id, t.price, t.required_points, "
+      "         ti.country, ti.type, ti.tier "
+      "  FROM tanks t "
+      "  JOIN tank_info ti ON t.data_id = ti.data_id "
+      "  JOIN player_tanks pt ON ti.country = pt.country "
+      "    AND ti.type = pt.type "
+      "    AND ti.tier = pt.tier + 1 "
+      "  WHERE pt.mod_id = 3 "
+      "    AND t.mod_id = 1 "
+      "    AND pt.game_points >= t.required_points"
+      ") "
+      "SELECT * FROM available_tanks "
+      "ORDER BY country, tier, mod_id";
+
+  const char *params[1] = {login};
+  PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    printf("ERROR: %s\n", PQerrorMessage(conn));
+    *count = 0;
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  TankInfo *tanks = malloc(rows * sizeof(TankInfo));
+  *count = rows;
+
+  for (int i = 0; i < rows; i++) {
+    tanks[i].tank_id = atoi(PQgetvalue(res, i, 0));
+    tanks[i].mod_id = atoi(PQgetvalue(res, i, 2));
+    tanks[i].price = atoi(PQgetvalue(res, i, 3));
+    tanks[i].required_points = atoi(PQgetvalue(res, i, 4));
+
+    strncpy(tanks[i].country, PQgetvalue(res, i, 5), 19);
+    tanks[i].country[19] = '\0';
+
+    strncpy(tanks[i].type, PQgetvalue(res, i, 6), 19);
+    tanks[i].type[19] = '\0';
+
+    tanks[i].tier = atoi(PQgetvalue(res, i, 7));
+  }
+
+  PQclear(res);
+  return tanks;
 }
