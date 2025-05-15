@@ -469,7 +469,6 @@ PlayerTechStats *get_tech_level_stats(PGconn *conn, int t_level, int *count) {
   }
 
   int rows = PQntuples(res);
-  printf("ROWS: %d\n", rows);
   PlayerTechStats *stats = malloc(rows * sizeof(PlayerTechStats));
   *count = rows;
 
@@ -481,8 +480,6 @@ PlayerTechStats *get_tech_level_stats(PGconn *conn, int t_level, int *count) {
   }
 
   PQclear(res);
-  printf("%s", PQerrorMessage(conn));
-  printf("ALL OK\n");
   return stats;
 }
 
@@ -494,10 +491,14 @@ int compare_tech_stats(const void *a, const void *b, SortCriteria criteria,
 
   switch (criteria) {
   case BY_DAMAGE:
-    result = s1->total_damage - s2->total_damage;
+    result = (s1->total_damage > s2->total_damage)   ? 1
+             : (s1->total_damage < s2->total_damage) ? -1
+                                                     : 0;
     break;
   case BY_DESTROYED_VEHICLES:
-    result = s1->destroyed_vehicles - s2->destroyed_vehicles;
+    result = (s1->destroyed_vehicles > s2->destroyed_vehicles)   ? 1
+             : (s1->destroyed_vehicles < s2->destroyed_vehicles) ? -1
+                                                                 : 0;
     break;
   }
 
@@ -525,7 +526,7 @@ void sort_tech_stats(PlayerTechStats *stats, int count, SortCriteria criteria,
   switch (criteria) {
   case BY_DAMAGE:
     qsort(stats, count, sizeof(PlayerTechStats),
-          (order == SORT_ASC) ? compare_by_damage_asc : compare_by_damage_desc);
+          (order == SORT_ASC) ? compare_tech_by_damage_asc : compare_tech_by_damage_desc);
     break;
   case BY_DESTROYED_VEHICLES:
     qsort(stats, count, sizeof(PlayerTechStats),

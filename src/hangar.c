@@ -443,7 +443,6 @@ TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count) {
   PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    printf("ERROR: %s\n", PQerrorMessage(conn));
     *count = 0;
     PQclear(res);
     return NULL;

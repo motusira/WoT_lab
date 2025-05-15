@@ -207,8 +207,15 @@ int PTSTableMessage(UIElement *element, UIMessage message, int di,
     int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
                                    element->window->cursorY);
     switch (hit) {
+    case 2:
+      s_dmg = s_dmg == 0 ? 1 : 0;
+      sort_tech_stats(pts, pts_count, BY_DAMAGE, s_dmg);
+      break;
+    case 3:
+      s_destroyed = s_destroyed == 0 ? 1 : 0;
+      sort_tech_stats(pts, pts_count, BY_DESTROYED_VEHICLES, s_destroyed);
+      break;
     }
-
     int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
                                 element->window->cursorY);
     if (report_selected != el_hit) {
@@ -246,7 +253,6 @@ void ReportsMenuCallback(void *cp) {
   if (!strcmp(cp, "Tier 1 stats")) {
     chosen_report_type = 1;
     pts = get_tech_level_stats(conn, 1, &pts_count);
-    printf("IMP %d\n", pts_count);
     UIElementDestroy(&report_table->e);
     report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
