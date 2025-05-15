@@ -46,6 +46,7 @@ GamesStat *gs = NULL;
 PlayerTechStats *pts = NULL;
 int gs_count;
 int pts_count;
+int s_dmg = 1, s_destroyed = 1, s_wins = 1, s_loses = 1, s_draws = 1;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query = "SELECT p.player_id, "
@@ -158,6 +159,18 @@ int WLDTableMessage(UIElement *element, UIMessage message, int di,
     int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
                                    element->window->cursorY);
     switch (hit) {
+    case 2:
+      s_wins = s_wins == 0 ? 1 : 0;
+      sort_player_stats(gs, gs_count, BY_WINS, s_wins);
+      break;
+    case 3:
+      s_loses = s_loses == 0 ? 1 : 0;
+      sort_player_stats(gs, pl_count, BY_LOSSES, s_loses);
+      break;
+    case 4:
+      s_draws = s_draws == 0 ? 1 : 0;
+      sort_player_stats(gs, pl_count, BY_DRAWS, s_draws);
+      break;
     }
 
     int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
