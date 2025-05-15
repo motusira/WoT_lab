@@ -4,6 +4,9 @@
 #include <libpq-fe.h>
 #include <stdbool.h>
 
+#define CURRENCY_ERROR 1
+#define POINTS_ERROR 2
+
 typedef struct {
   int tank_id;
   int tier;
@@ -30,6 +33,6 @@ bool repair_tank_by_login(PGconn *conn, const char *login, int h_id,
                           int r_cost);
 bool sell_tank_by_login(PGconn *conn, const char *login, int h_id, int t_price);
 TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count);
-bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id);
+int buy_tank(PGconn *conn, const char *login, int t_id, int m_id);
 
 #endif

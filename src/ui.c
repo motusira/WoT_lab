@@ -11,7 +11,8 @@ UIButton *button, *find_button, *clear_button, *login_button,
     *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
     *play_button, *register_button;
 UILabel *label, *player_currency, *selected_tank_from_hangar,
-    *selected_tank_to_buy, *repair_cost_label, *sell_price_label;
+    *selected_tank_to_buy, *repair_cost_label, *sell_price_label,
+    *buy_price_label;
 UIWindow *window;
 UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
     *match_making, *reports, *user_panel_parent, *user_login_panel,
@@ -240,19 +241,26 @@ int PlayerCanBuyTableMessage(UIElement *element, UIMessage message, int di,
     char buff[256];
     switch (m->column) {
     case 0:
-      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].tank_id);
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      buyable_tanks[m->index].tank_id);
     case 1:
-      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].tier);
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      buyable_tanks[m->index].tier);
     case 2:
-      return snprintf(m->buffer, m->bufferBytes, "%s", buyable_tanks[m->index].country);
+      return snprintf(m->buffer, m->bufferBytes, "%s",
+                      buyable_tanks[m->index].country);
     case 3:
-      return snprintf(m->buffer, m->bufferBytes, "%s", buyable_tanks[m->index].type);
+      return snprintf(m->buffer, m->bufferBytes, "%s",
+                      buyable_tanks[m->index].type);
     case 4:
-      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].mod_id);
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      buyable_tanks[m->index].mod_id);
     case 5:
-      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].required_points);
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      buyable_tanks[m->index].required_points);
     case 6:
-      return snprintf(m->buffer, m->bufferBytes, "%d", buyable_tanks[m->index].price);
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      buyable_tanks[m->index].price);
     }
   } else if (message == UI_MSG_LEFT_DOWN) {
     int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
@@ -261,7 +269,14 @@ int PlayerCanBuyTableMessage(UIElement *element, UIMessage message, int di,
       buy_selected = el_hit;
       char buff[128];
       if (buy_selected >= 0) {
+        snprintf(buff, 128, "Selected %d tank",
+                 buyable_tanks[buy_selected].tank_id);
+        UILabelSetContent(selected_tank_to_buy, buff, -1);
+        snprintf(buff, 128, "Price: %d", buyable_tanks[buy_selected].price);
+        UILabelSetContent(buy_price_label, buff, -1);
       } else {
+        UILabelSetContent(selected_tank_to_buy, "No tank selected.", -1);
+        UILabelSetContent(buy_price_label, "", -1);
       }
 
       if (!UITableEnsureVisible((UITable *)element, buy_selected)) {
@@ -366,17 +381,29 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
-int BuyButtonMessage(UIElement *element, UIMessage message, int di,
-                        void *dp) {
+int BuyButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
   if (message == UI_MSG_CLICKED) {
     if (buy_selected >= 0) {
-      printf("BUY %d %d\n", buyable_tanks[buy_selected].tank_id, buyable_tanks[buy_selected].mod_id);
-      buy_tank(conn, user, buyable_tanks[buy_selected].tank_id, buyable_tanks[buy_selected].mod_id);
+      int error = buy_tank(conn, user, buyable_tanks[buy_selected].tank_id,
+                           buyable_tanks[buy_selected].mod_id);
+
+      if (error == 1) {
+        UILabelSetContent(buy_price_label, "Not enough currency amount!", -1);
+      } else if (error == 2) {
+        UILabelSetContent(buy_price_label, "Not enough game points amout!", -1);
+      } else if (error == 0) {
+        UILabelSetContent(buy_price_label, "", -1);
+      }
+      UILabelSetContent(selected_tank_to_buy, "No tank selected.", -1);
+
       get_player_currency(user);
       update_tanks();
       buy_selected = -1;
       player_hangar_table->itemCount = tanks_in_hangar;
       UITableResizeColumns(player_hangar_table);
+
+      player_can_buy_table->itemCount = can_buy_tanks;
+      UITableResizeColumns(player_can_buy_table);
       UIElementRefresh(&window->e);
     }
   }
@@ -419,9 +446,10 @@ void as_user(void) {
   hangar = UISplitPaneCreate(&window->e, 0, 0.50f);
 
   update_tanks();
-  player_hangar_table = UITableCreate(
-      &hangar->e, 0,
-      "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame points\tPrice (Sell)");
+  player_hangar_table =
+      UITableCreate(&hangar->e, 0,
+                    "Tank ID\tTier\tCountry\tStatus\tType\tModification\tGame "
+                    "points\tPrice (Sell)");
   player_hangar_table->e.messageUser = PlayerHangarTableMessage;
   player_hangar_table->itemCount = tanks_in_hangar;
   UITableResizeColumns(player_hangar_table);
@@ -432,9 +460,9 @@ void as_user(void) {
   user_panel_parent =
       UIPanelCreate(&actions->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
 
-  printf("T %d\n", can_buy_tanks);
-
-  player_can_buy_table = UITableCreate(&actions->e, 0, "Tank ID\tTier\tCountry\tType\tModification\tRequired points\tPrice");
+  player_can_buy_table = UITableCreate(
+      &actions->e, 0,
+      "Tank ID\tTier\tCountry\tType\tModification\tRequired points\tPrice");
   player_can_buy_table->e.messageUser = PlayerCanBuyTableMessage;
   player_can_buy_table->itemCount = can_buy_tanks;
   UITableResizeColumns(player_can_buy_table);
@@ -479,6 +507,8 @@ void as_user(void) {
   buy_button =
       UIButtonCreate(&user_panel_buy_actions->e, 0, "Buy selected vehicle", -1);
   buy_button->e.messageUser = BuyButtonMessage;
+
+  buy_price_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
 }
 
 void process_login(void) {

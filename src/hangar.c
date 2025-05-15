@@ -472,7 +472,7 @@ TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count) {
 }
 
 
-bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
+int buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
     PGresult *res;
     bool success = false;
     
@@ -489,7 +489,7 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
         fprintf(stderr, "Player not found\n");
         PQclear(res);
         PQexec(conn, "ROLLBACK");
-        return false;
+        return 3;
     }
     
     int p_id = atoi(PQgetvalue(res, 0, 0));
@@ -514,7 +514,7 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
         fprintf(stderr, "Tank not found\n");
         PQclear(res);
         PQexec(conn, "ROLLBACK");
-        return false;
+        return 3;
     }
     
     int price = atoi(PQgetvalue(res, 0, 0));
@@ -525,10 +525,8 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
     if (b < price) {
         fprintf(stderr, "Insufficient funds\n");
         PQexec(conn, "ROLLBACK");
-        return false;
+        return CURRENCY_ERROR;
     }
-
-    printf("ERROR: %s\n", PQerrorMessage(conn));
 
     const char *check_points_query = 
         "SELECT h.game_points "
@@ -557,10 +555,9 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
             fprintf(stderr, "Not enough game points\n");
             PQclear(res);
             PQexec(conn, "ROLLBACK");
-            return false;
+            return POINTS_ERROR;
         }
     }
-    printf("ERROR: %s\n", PQerrorMessage(conn));
 
     PQclear(res);
 
@@ -575,9 +572,8 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
         fprintf(stderr, "Tank already owned\n");
         PQclear(res);
         PQexec(conn, "ROLLBACK");
-        return false;
+        return 3;
     }
-      printf("ERROR: %s\n", PQerrorMessage(conn));
     PQclear(res);
 
     const char *update_balance_query = 
@@ -590,9 +586,8 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         PQclear(res);
         PQexec(conn, "ROLLBACK");
-        return false;
+        return 3;
     }
-    printf("4ERROR: %s\n", PQerrorMessage(conn));
     PQclear(res);
 
     const char *insert_hangar_query = 
@@ -606,12 +601,10 @@ bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
     printf("ERROR: %s\n", PQerrorMessage(conn));
         PQclear(res);
         PQexec(conn, "ROLLBACK");
-        return false;
+        return 3;
     }
-    printf("ERROR: %s\n", PQerrorMessage(conn));
     PQclear(res);
 
     PQexec(conn, "COMMIT");
-    printf("ALL GOOD");
-    return true;
+    return 0;
 }
