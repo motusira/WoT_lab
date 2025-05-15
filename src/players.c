@@ -336,16 +336,20 @@ GamesStat *get_player_stats(PGconn *conn, int *count) {
   //     "LEFT JOIN matches m ON part.match_id = m.match_id "
   //     "GROUP BY p.player_id, p.login "
   //     "ORDER BY p.player_id";
-const char *query =
-    "SELECT p.player_id, p.login, "
-    "COUNT(CASE WHEN (part.team = 1 AND m.result = 1) OR (part.team = 2 AND m.result = 2) THEN 1 END) AS wins, "
-    "COUNT(CASE WHEN (part.team = 1 AND m.result = 2) OR (part.team = 2 AND m.result = 1) THEN 1 END) AS losses, "
-    "COUNT(CASE WHEN m.result = 0 THEN 1 END) AS draws "
-    "FROM players p "
-    "LEFT JOIN participants part ON p.player_id = part.player_id "
-    "LEFT JOIN matches m ON part.participant_id IN (m.participant1, m.participant2, m.participant3, m.participant4, m.participant5, m.participant6) "
-    "GROUP BY p.player_id, p.login "
-    "ORDER BY p.player_id";
+  const char *query =
+      "SELECT p.player_id, p.login, "
+      "COUNT(CASE WHEN (part.team = 1 AND m.result = 1) OR (part.team = 2 AND "
+      "m.result = 2) THEN 1 END) AS wins, "
+      "COUNT(CASE WHEN (part.team = 1 AND m.result = 2) OR (part.team = 2 AND "
+      "m.result = 1) THEN 1 END) AS losses, "
+      "COUNT(CASE WHEN m.result = 0 THEN 1 END) AS draws "
+      "FROM players p "
+      "LEFT JOIN participants part ON p.player_id = part.player_id "
+      "LEFT JOIN matches m ON part.participant_id IN (m.participant1, "
+      "m.participant2, m.participant3, m.participant4, m.participant5, "
+      "m.participant6) "
+      "GROUP BY p.player_id, p.login "
+      "ORDER BY p.player_id";
   PGresult *res = PQexec(conn, query);
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -430,6 +434,103 @@ void sort_player_stats(GamesStat *stats, int count, GamesStatCriteria criteria,
   case BY_DRAWS:
     qsort(stats, count, sizeof(GamesStat),
           (order == SORT_ASC) ? compare_by_draws_asc : compare_by_draws_desc);
+    break;
+  }
+}
+
+PlayerTechStats *get_tech_level_stats(PGconn *conn, int t_level, int *count) {
+  const char *query =
+      "SELECT "
+      "  p.player_id, "
+      "  p.login, "
+      "  COALESCE(SUM(part.damage_dealt), 0) AS total_damage, "
+      "  COALESCE(SUM(part.kills), 0) AS destroyed_vehicles "
+      "FROM players p "
+      "LEFT JOIN participants part ON p.player_id = part.player_id "
+      "LEFT JOIN hangars h ON part.hangar_id = h.hangar_id "
+      "LEFT JOIN tanks t ON h.tank_id = t.tank_id "
+      "LEFT JOIN tank_info ti ON t.data_id = ti.data_id "
+      "WHERE ti.tier = $1 "
+      "GROUP BY p.player_id, p.login "
+      "ORDER BY total_damage DESC;";
+
+  char tech_level[50];
+  snprintf(tech_level, 50, "%d", t_level);
+
+  const char *params[1] = {tech_level};
+
+  PGresult *res = PQexecParams(conn, query, 1, NULL, params, NULL, NULL, 0);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    printf("%s", PQerrorMessage(conn));
+    *count = 0;
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  printf("ROWS: %d\n", rows);
+  PlayerTechStats *stats = malloc(rows * sizeof(PlayerTechStats));
+  *count = rows;
+
+  for (int i = 0; i < rows; i++) {
+    stats[i].player_id = atoi(PQgetvalue(res, i, 0));
+    snprintf(stats[i].login, 50, "%s", PQgetvalue(res, i, 1));
+    stats[i].total_damage = atoi(PQgetvalue(res, i, 2));
+    stats[i].destroyed_vehicles = atoi(PQgetvalue(res, i, 3));
+  }
+
+  PQclear(res);
+  printf("%s", PQerrorMessage(conn));
+  printf("ALL OK\n");
+  return stats;
+}
+
+int compare_tech_stats(const void *a, const void *b, SortCriteria criteria,
+                       SortOrder order) {
+  const PlayerTechStats *s1 = (const PlayerTechStats *)a;
+  const PlayerTechStats *s2 = (const PlayerTechStats *)b;
+  int result = 0;
+
+  switch (criteria) {
+  case BY_DAMAGE:
+    result = s1->total_damage - s2->total_damage;
+    break;
+  case BY_DESTROYED_VEHICLES:
+    result = s1->destroyed_vehicles - s2->destroyed_vehicles;
+    break;
+  }
+
+  return (order == SORT_DESC) ? -result : result;
+}
+
+int compare_tech_by_damage_asc(const void *a, const void *b) {
+  return compare_tech_stats(a, b, BY_DAMAGE, SORT_ASC);
+}
+
+int compare_tech_by_damage_desc(const void *a, const void *b) {
+  return compare_tech_stats(a, b, BY_DAMAGE, SORT_DESC);
+}
+
+int compare_tech_by_destroyed_asc(const void *a, const void *b) {
+  return compare_tech_stats(a, b, BY_DESTROYED_VEHICLES, SORT_ASC);
+}
+
+int compare_tech_by_destroyed_desc(const void *a, const void *b) {
+  return compare_tech_stats(a, b, BY_DESTROYED_VEHICLES, SORT_DESC);
+}
+
+void sort_tech_stats(PlayerTechStats *stats, int count, SortCriteria criteria,
+                     SortOrder order) {
+  switch (criteria) {
+  case BY_DAMAGE:
+    qsort(stats, count, sizeof(PlayerTechStats),
+          (order == SORT_ASC) ? compare_by_damage_asc : compare_by_damage_desc);
+    break;
+  case BY_DESTROYED_VEHICLES:
+    qsort(stats, count, sizeof(PlayerTechStats),
+          (order == SORT_ASC) ? compare_tech_by_destroyed_asc
+                              : compare_tech_by_destroyed_desc);
     break;
   }
 }

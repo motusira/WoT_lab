@@ -24,7 +24,7 @@ typedef struct {
 
 typedef struct {
     int player_id;
-    char *login;
+    char login[50];
     int total_damage;
     int destroyed_vehicles;
 } PlayerTechStats;
@@ -52,5 +52,9 @@ bool create_player(PGconn *conn, const char *login);
 GamesStat *get_player_stats(PGconn *conn, int *count);
 void sort_player_stats(GamesStat *stats, int count, GamesStatCriteria criteria,
                        SortOrder order);
+PlayerTechStats* get_tech_level_stats(PGconn *conn, int t_level, int *count);
+void sort_tech_stats(PlayerTechStats *stats, int count, 
+                    SortCriteria criteria,
+                    SortOrder order);
 
 #endif

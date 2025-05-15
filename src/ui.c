@@ -43,7 +43,9 @@ int chosen_report_type;
 int report_selected = -1;
 
 GamesStat *gs = NULL;
+PlayerTechStats *pts = NULL;
 int gs_count;
+int pts_count;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query = "SELECT p.player_id, "
@@ -171,8 +173,53 @@ int WLDTableMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+int PTSTableMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_TABLE_GET_ITEM) {
+    UITableGetItem *m = (UITableGetItem *)dp;
+    m->isSelected = report_selected == m->index;
+    switch (m->column) {
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", pts[m->index].player_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%s", pts[m->index].login);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      pts[m->index].total_damage);
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      pts[m->index].destroyed_vehicles);
+    }
+  } else if (message == UI_MSG_LEFT_DOWN) {
+    int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
+                                   element->window->cursorY);
+    switch (hit) {
+    }
+
+    int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
+                                element->window->cursorY);
+    if (report_selected != el_hit) {
+      report_selected = el_hit;
+
+      if (!UITableEnsureVisible((UITable *)element, report_selected)) {
+        UIElementRepaint(element, NULL);
+      }
+    }
+  }
+  return 0;
+}
+
 void ReportsMenuCallback(void *cp) {
   UIButtonSetLabel(report_selection_button, cp, -1);
+  if (gs != NULL) {
+    free(gs);
+    gs = NULL;
+  }
+  if (pts != NULL) {
+    free(pts);
+    pts = NULL;
+  }
+  report_selected = -1;
   if (!strcmp(cp, "Wins/Loses/Drafts")) {
     chosen_report_type = 0;
     gs = get_player_stats(conn, &gs_count);
@@ -185,22 +232,53 @@ void ReportsMenuCallback(void *cp) {
   }
   if (!strcmp(cp, "Tier 1 stats")) {
     chosen_report_type = 1;
+    pts = get_tech_level_stats(conn, 1, &pts_count);
+    printf("IMP %d\n", pts_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table->e.messageUser = PTSTableMessage;
+    report_table->itemCount = pts_count;
+    UITableResizeColumns(report_table);
     return;
   }
   if (!strcmp(cp, "Tier 2 stats")) {
     chosen_report_type = 2;
+    pts = get_tech_level_stats(conn, 2, &pts_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table->e.messageUser = PTSTableMessage;
+    report_table->itemCount = pts_count;
+    UITableResizeColumns(report_table);
     return;
   }
   if (!strcmp(cp, "Tier 3 stats")) {
     chosen_report_type = 3;
+    pts = get_tech_level_stats(conn, 3, &pts_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table->e.messageUser = PTSTableMessage;
+    report_table->itemCount = pts_count;
+    UITableResizeColumns(report_table);
     return;
   }
   if (!strcmp(cp, "Tier 4 stats")) {
     chosen_report_type = 4;
+    pts = get_tech_level_stats(conn, 4, &pts_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table->e.messageUser = PTSTableMessage;
+    report_table->itemCount = pts_count;
+    UITableResizeColumns(report_table);
     return;
   }
   if (!strcmp(cp, "Tier 5 stats")) {
     chosen_report_type = 5;
+    pts = get_tech_level_stats(conn, 5, &pts_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table->e.messageUser = PTSTableMessage;
+    report_table->itemCount = pts_count;
+    UITableResizeColumns(report_table);
     return;
   }
 }
