@@ -9,20 +9,20 @@ PGconn *conn;
 UIButton *button, *find_button, *clear_button, *login_button,
     *select_login_button, *make_match_button, *update_matches_button,
     *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
-    *play_button, *register_button;
+    *play_button, *register_button, *report_selection_button;
 UILabel *label, *player_currency, *selected_tank_from_hangar,
     *selected_tank_to_buy, *repair_cost_label, *sell_price_label,
     *buy_price_label;
 UIWindow *window;
 UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
-    *match_making, *reports, *user_panel_parent, *user_login_panel,
+    *match_making, *user_panel_parent, *user_login_panel,
     *user_panel_hangar_actions, *user_panel_buy_actions, *admin_logout,
-    *register_panel;
+    *register_panel, *report_chose_panel;
 UITabPane *admin_pane;
 UITextbox *pi_input, *register_input;
 UITable *players_table, *matches_table, *player_hangar_table,
-    *player_can_buy_table;
-UISplitPane *hangar, *actions, *buy;
+    *player_can_buy_table, *report_table;
+UISplitPane *hangar, *actions, *buy, *reports;
 
 int pl_count;
 int id = 1, rating = 1, currency = 1, damage = 1, destroyed = 1;
@@ -38,6 +38,12 @@ int tanks_in_hangar, can_buy_tanks;
 TankInfo *tanks = NULL, *buyable_tanks = NULL;
 int hangar_tank_selected = -1, buy_selected = -1;
 int pc;
+
+int chosen_report_type;
+int report_selected = -1;
+
+GamesStat *gs = NULL;
+int gs_count;
 
 void draw_info(PGconn *conn, const char *l) {
   const char *query = "SELECT p.player_id, "
@@ -125,6 +131,96 @@ void update_matches(PGconn *conn) {
   UITableResizeColumns(matches_table);
 }
 
+
+int WLDTableMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_TABLE_GET_ITEM) {
+    UITableGetItem *m = (UITableGetItem *)dp;
+    m->isSelected = report_selected == m->index;
+    switch (m->column) {
+    case 0:
+      return snprintf(m->buffer, m->bufferBytes, "%d", gs[m->index].player_id);
+    case 1:
+      return snprintf(m->buffer, m->bufferBytes, "%s", gs[m->index].login);
+    case 2:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      gs[m->index].wins);
+    case 3:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      gs[m->index].losses);
+    case 4:
+      return snprintf(m->buffer, m->bufferBytes, "%d",
+                      gs[m->index].draws);
+    }
+  } else if (message == UI_MSG_LEFT_DOWN) {
+    int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
+                                   element->window->cursorY);
+    switch (hit) {
+    }
+
+    int el_hit = UITableHitTest((UITable *)element, element->window->cursorX,
+                                element->window->cursorY);
+    if (report_selected != el_hit) {
+      report_selected = el_hit;
+
+      if (!UITableEnsureVisible((UITable *)element, report_selected)) {
+        UIElementRepaint(element, NULL);
+      }
+    }
+  }
+  return 0;
+}
+
+void ReportsMenuCallback(void *cp) {
+  UIButtonSetLabel(report_selection_button, cp, -1);
+  if (!strcmp(cp, "Wins/Loses/Drafts")) {
+    chosen_report_type = 0;
+    gs = get_player_stats(conn, &gs_count);
+    UIElementDestroy(&report_table->e);
+    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tWins\tLoses\tDrafts");
+    report_table->e.messageUser = WLDTableMessage;
+    report_table->itemCount = gs_count;
+    UITableResizeColumns(report_table);
+    return;
+  }
+  if (!strcmp(cp, "Tier 1 stats")) {
+    chosen_report_type = 1;
+    return;
+  }
+  if (!strcmp(cp, "Tier 2 stats")) {
+    chosen_report_type = 2;
+    return;
+  }
+  if (!strcmp(cp, "Tier 3 stats")) {
+    chosen_report_type = 3;
+    return;
+  }
+  if (!strcmp(cp, "Tier 4 stats")) {
+    chosen_report_type = 4;
+    return;
+  }
+  if (!strcmp(cp, "Tier 5 stats")) {
+    chosen_report_type = 5;
+    return;
+  }
+}
+
+int ReportSelectButtonMessage(UIElement *element, UIMessage message, int di,
+                             void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    UIMenu *report_menu = UIMenuCreate(element, 0);
+    UIMenuAddItem(report_menu, 0, "Wins/Loses/Drafts", -1, ReportsMenuCallback, "Wins/Loses/Drafts");
+    UIMenuAddItem(report_menu, 0, "Tier 1 stats", -1, ReportsMenuCallback, "Tier 1 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 2 stats", -1, ReportsMenuCallback, "Tier 2 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 3 stats", -1, ReportsMenuCallback, "Tier 3 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 4 stats", -1, ReportsMenuCallback, "Tier 4 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 5 stats", -1, ReportsMenuCallback,"Tier 5 stats");
+    UIMenuShow(report_menu);
+  }
+  return 0;
+}
+
+
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
       &window->e, 0,
@@ -174,8 +270,12 @@ void as_admin(void) {
   matches_table->itemCount = matches_count;
   UITableResizeColumns(matches_table);
 
-  reports =
-      UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  reports = UISplitPaneCreate(&admin_pane->e, UI_SPLIT_PANE_VERTICAL, .10f);
+
+  report_chose_panel = UIPanelCreate(&reports->e, UI_PANEL_COLOR_1);
+  report_selection_button = UIButtonCreate(&report_chose_panel->e, 0, "Select report type", -1);
+  report_selection_button->e.messageUser = ReportSelectButtonMessage;
+  report_table = UITableCreate(&reports->e, 0, "");
 
   admin_logout = UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1);
   logout_button = UIButtonCreate(&admin_logout->e, 0, "Logout", -1);

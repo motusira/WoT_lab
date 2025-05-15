@@ -188,13 +188,19 @@ int compare_players(const void *a, const void *b, SortCriteria criteria,
     result = (p1->rating > p2->rating) ? 1 : (p1->rating < p2->rating) ? -1 : 0;
     break;
   case BY_DAMAGE:
-    result = (p1->total_damage > p2->total_damage) ? 1 : (p1->total_damage < p2->total_damage) ? -1 : 0;
+    result = (p1->total_damage > p2->total_damage)   ? 1
+             : (p1->total_damage < p2->total_damage) ? -1
+                                                     : 0;
     break;
   case BY_DESTROYED_VEHICLES:
-    result = (p1->destroyed_vehicles > p2->destroyed_vehicles) ? 1 : (p1->destroyed_vehicles < p2->destroyed_vehicles) ? -1 : 0;
+    result = (p1->destroyed_vehicles > p2->destroyed_vehicles)   ? 1
+             : (p1->destroyed_vehicles < p2->destroyed_vehicles) ? -1
+                                                                 : 0;
     break;
   case BY_CURRENCY_AMOUNT:
-    result = (p1->currency_amount > p2->currency_amount) ? 1 : (p1->currency_amount < p2->currency_amount) ? -1 : 0;
+    result = (p1->currency_amount > p2->currency_amount)   ? 1
+             : (p1->currency_amount < p2->currency_amount) ? -1
+                                                           : 0;
     break;
   }
 
@@ -258,11 +264,13 @@ void sort_players(Player *players, int count, SortCriteria criteria,
     break;
   case BY_DESTROYED_VEHICLES:
     qsort(players, count, sizeof(Player),
-          (order == SORT_ASC) ? compare_by_destroyed_vehicles_asc : compare_by_destroyed_vehicles_desc);
+          (order == SORT_ASC) ? compare_by_destroyed_vehicles_asc
+                              : compare_by_destroyed_vehicles_desc);
     break;
   case BY_CURRENCY_AMOUNT:
     qsort(players, count, sizeof(Player),
-          (order == SORT_ASC) ? compare_by_currency_amount_asc : compare_by_currency_amount_desc);
+          (order == SORT_ASC) ? compare_by_currency_amount_asc
+                              : compare_by_currency_amount_desc);
     break;
   }
 }
@@ -315,4 +323,113 @@ bool create_player(PGconn *conn, const char *login) {
   PQexec(conn, "COMMIT");
   PQclear(res);
   return true;
+}
+
+GamesStat *get_player_stats(PGconn *conn, int *count) {
+  // const char *query =
+  //     "SELECT p.player_id, p.login, "
+  //     "COUNT(CASE WHEN m.result = 1 THEN 1 END) AS wins, "
+  //     "COUNT(CASE WHEN m.result = 2 THEN 1 END) AS losses, "
+  //     "COUNT(CASE WHEN m.result = 0 THEN 1 END) AS draws "
+  //     "FROM players p "
+  //     "LEFT JOIN participants part ON p.player_id = part.player_id "
+  //     "LEFT JOIN matches m ON part.match_id = m.match_id "
+  //     "GROUP BY p.player_id, p.login "
+  //     "ORDER BY p.player_id";
+const char *query =
+    "SELECT p.player_id, p.login, "
+    "COUNT(CASE WHEN (part.team = 1 AND m.result = 1) OR (part.team = 2 AND m.result = 2) THEN 1 END) AS wins, "
+    "COUNT(CASE WHEN (part.team = 1 AND m.result = 2) OR (part.team = 2 AND m.result = 1) THEN 1 END) AS losses, "
+    "COUNT(CASE WHEN m.result = 0 THEN 1 END) AS draws "
+    "FROM players p "
+    "LEFT JOIN participants part ON p.player_id = part.player_id "
+    "LEFT JOIN matches m ON part.participant_id IN (m.participant1, m.participant2, m.participant3, m.participant4, m.participant5, m.participant6) "
+    "GROUP BY p.player_id, p.login "
+    "ORDER BY p.player_id";
+  PGresult *res = PQexec(conn, query);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    printf("%s\n", PQerrorMessage(conn));
+    *count = 0;
+    PQclear(res);
+    return NULL;
+  }
+
+  int rows = PQntuples(res);
+  GamesStat *stats = malloc(rows * sizeof(GamesStat));
+  *count = rows;
+
+  for (int i = 0; i < rows; i++) {
+    stats[i].player_id = atoi(PQgetvalue(res, i, 0));
+    snprintf(stats[i].login, 50, "%s", PQgetvalue(res, i, 1));
+    stats[i].wins = atoi(PQgetvalue(res, i, 2));
+    stats[i].losses = atoi(PQgetvalue(res, i, 3));
+    stats[i].draws = atoi(PQgetvalue(res, i, 4));
+  }
+
+  PQclear(res);
+  return stats;
+}
+
+int compare_player_stats(const void *a, const void *b,
+                         GamesStatCriteria criteria, SortOrder order) {
+  const GamesStat *p1 = (const GamesStat *)a;
+  const GamesStat *p2 = (const GamesStat *)b;
+  int result = 0;
+
+  switch (criteria) {
+  case BY_WINS:
+    result = p1->wins - p2->wins;
+    break;
+  case BY_LOSSES:
+    result = p1->losses - p2->losses;
+    break;
+  case BY_DRAWS:
+    result = p1->draws - p2->draws;
+    break;
+  }
+
+  return (order == SORT_DESC) ? -result : result;
+}
+
+int compare_by_wins_asc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_WINS, SORT_ASC);
+}
+
+int compare_by_wins_desc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_WINS, SORT_DESC);
+}
+
+int compare_by_losses_asc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_LOSSES, SORT_ASC);
+}
+
+int compare_by_losses_desc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_LOSSES, SORT_DESC);
+}
+
+int compare_by_draws_asc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_DRAWS, SORT_ASC);
+}
+
+int compare_by_draws_desc(const void *a, const void *b) {
+  return compare_player_stats(a, b, BY_DRAWS, SORT_DESC);
+}
+
+void sort_player_stats(GamesStat *stats, int count, GamesStatCriteria criteria,
+                       SortOrder order) {
+  switch (criteria) {
+  case BY_WINS:
+    qsort(stats, count, sizeof(GamesStat),
+          (order == SORT_ASC) ? compare_by_wins_asc : compare_by_wins_desc);
+    break;
+  case BY_LOSSES:
+    qsort(stats, count, sizeof(GamesStat),
+          (order == SORT_ASC) ? compare_by_losses_asc : compare_by_losses_desc);
+    break;
+  case BY_DRAWS:
+    qsort(stats, count, sizeof(GamesStat),
+          (order == SORT_ASC) ? compare_by_draws_asc : compare_by_draws_desc);
+    break;
+  }
 }
