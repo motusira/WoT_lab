@@ -30,5 +30,6 @@ bool repair_tank_by_login(PGconn *conn, const char *login, int h_id,
                           int r_cost);
 bool sell_tank_by_login(PGconn *conn, const char *login, int h_id, int t_price);
 TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count);
+bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id);
 
 #endif

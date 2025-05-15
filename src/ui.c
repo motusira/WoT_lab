@@ -261,14 +261,8 @@ int PlayerCanBuyTableMessage(UIElement *element, UIMessage message, int di,
       buy_selected = el_hit;
       char buff[128];
       if (buy_selected >= 0) {
-        snprintf(buff, 128, "Selected %d tank",
-                 buyable_tanks[buy_selected].tank_id);
-        UILabelSetContent(selected_tank_from_hangar, buff, -1);
       } else {
-        UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
       }
-      get_repair_cost();
-      get_sell_price();
 
       if (!UITableEnsureVisible((UITable *)element, buy_selected)) {
         UIElementRepaint(element, NULL);
@@ -372,6 +366,23 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+int BuyButtonMessage(UIElement *element, UIMessage message, int di,
+                        void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    if (buy_selected >= 0) {
+      printf("BUY %d %d\n", buyable_tanks[buy_selected].tank_id, buyable_tanks[buy_selected].mod_id);
+      buy_tank(conn, user, buyable_tanks[buy_selected].tank_id, buyable_tanks[buy_selected].mod_id);
+      get_player_currency(user);
+      update_tanks();
+      buy_selected = -1;
+      player_hangar_table->itemCount = tanks_in_hangar;
+      UITableResizeColumns(player_hangar_table);
+      UIElementRefresh(&window->e);
+    }
+  }
+  return 0;
+}
+
 void get_player_currency(const char *l) {
   const char *params[1] = {l};
   PGresult *res = PQexecParams(
@@ -467,6 +478,7 @@ void as_user(void) {
 
   buy_button =
       UIButtonCreate(&user_panel_buy_actions->e, 0, "Buy selected vehicle", -1);
+  buy_button->e.messageUser = BuyButtonMessage;
 }
 
 void process_login(void) {

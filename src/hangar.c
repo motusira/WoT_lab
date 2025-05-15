@@ -470,3 +470,148 @@ TankInfo *get_available_tanks(PGconn *conn, const char *login, int *count) {
   PQclear(res);
   return tanks;
 }
+
+
+bool buy_tank(PGconn *conn, const char *login, int t_id, int m_id) {
+    PGresult *res;
+    bool success = false;
+    
+    PQexec(conn, "BEGIN");
+
+    const char *get_player_query = 
+        "SELECT player_id, currency_amount "
+        "FROM players WHERE login = $1";
+    
+    const char *params[1] = {login};
+    res = PQexecParams(conn, get_player_query, 1, NULL, params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+        fprintf(stderr, "Player not found\n");
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+    
+    int p_id = atoi(PQgetvalue(res, 0, 0));
+    int b = atoi(PQgetvalue(res, 0, 1));
+    PQclear(res);
+
+    const char *check_tank_query = 
+        "SELECT price, required_points, data_id "
+        "FROM tanks "
+        "WHERE tank_id = $1 AND mod_id = $2";
+
+    char tank_id[50];
+    snprintf(tank_id, 50, "%d", t_id);
+    
+    char mod_id[50];
+    snprintf(mod_id, 50, "%d", m_id);
+
+    const char *tank_params[2] = {tank_id, mod_id};
+    res = PQexecParams(conn, check_tank_query, 2, NULL, tank_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+        fprintf(stderr, "Tank not found\n");
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+    
+    int price = atoi(PQgetvalue(res, 0, 0));
+    int required_points = atoi(PQgetvalue(res, 0, 1));
+    int d_id = atoi(PQgetvalue(res, 0, 2));
+    PQclear(res);
+
+    if (b < price) {
+        fprintf(stderr, "Insufficient funds\n");
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+
+    printf("ERROR: %s\n", PQerrorMessage(conn));
+
+    const char *check_points_query = 
+        "SELECT h.game_points "
+        "FROM hangars h "
+        "JOIN tanks t ON h.tank_id = t.tank_id "
+        "WHERE h.player_id = $1 "
+        "  AND t.data_id = $2 "
+        "  AND h.is_sold = FALSE "
+        "ORDER BY t.mod_id DESC LIMIT 1";
+
+    char player_id[50];
+    snprintf(player_id, 50, "%d", p_id);
+    
+    char data_id[50];
+    snprintf(data_id, 50, "%d", d_id);
+
+    char p[50];
+    snprintf(p, 50, "%d", price);
+
+    const char *points_params[2] = {player_id, data_id};
+    res = PQexecParams(conn, check_points_query, 2, NULL, points_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+        int current_points = atoi(PQgetvalue(res, 0, 0));
+        if (current_points < required_points) {
+            fprintf(stderr, "Not enough game points\n");
+            PQclear(res);
+            PQexec(conn, "ROLLBACK");
+            return false;
+        }
+    }
+    printf("ERROR: %s\n", PQerrorMessage(conn));
+
+    PQclear(res);
+
+    const char *check_duplicate_query = 
+        "SELECT 1 FROM hangars "
+        "WHERE player_id = $1 AND tank_id = $2 AND is_sold = FALSE";
+    
+    const char *duplicate_params[2] = {player_id, tank_id};
+    res = PQexecParams(conn, check_duplicate_query, 2, NULL, duplicate_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+        fprintf(stderr, "Tank already owned\n");
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+      printf("ERROR: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+
+    const char *update_balance_query = 
+        "UPDATE players SET currency_amount = currency_amount - $1 "
+        "WHERE player_id = $2";
+    
+    const char *update_params[2] = {p, player_id};
+    res = PQexecParams(conn, update_balance_query, 2, NULL, update_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+    printf("4ERROR: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+
+    const char *insert_hangar_query = 
+        "INSERT INTO hangars (player_id, tank_id, game_points, status) "
+        "VALUES ($1, $2, 0, 'operational')";
+    
+    const char *insert_params[2] = {player_id, tank_id};
+    res = PQexecParams(conn, insert_hangar_query, 2, NULL, insert_params, NULL, NULL, 0);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    printf("ERROR: %s\n", PQerrorMessage(conn));
+        PQclear(res);
+        PQexec(conn, "ROLLBACK");
+        return false;
+    }
+    printf("ERROR: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+
+    PQexec(conn, "COMMIT");
+    printf("ALL GOOD");
+    return true;
+}
