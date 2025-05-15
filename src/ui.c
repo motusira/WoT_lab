@@ -25,7 +25,7 @@ UITable *players_table, *matches_table, *player_hangar_table,
 UISplitPane *hangar, *actions, *buy;
 
 int pl_count;
-int id = 1, rating;
+int id = 1, rating = 1, currency = 1, damage = 1, destroyed = 1;
 int selected = -1, match_selected = -1;
 Player *pl;
 
@@ -624,6 +624,18 @@ int PlayersTableMessage(UIElement *element, UIMessage message, int di,
     case 1:
       rating = rating == 0 ? 1 : 0;
       sort_players(pl, pl_count, BY_RATING, rating);
+      break;
+    case 4:
+      currency = currency == 0 ? 1 : 0;
+      sort_players(pl, pl_count, BY_CURRENCY_AMOUNT, currency);
+      break;
+    case 5:
+      damage = damage == 0 ? 1 : 0;
+      sort_players(pl, pl_count, BY_DAMAGE, damage);
+      break;
+    case 6:
+      destroyed = destroyed == 0 ? 1 : 0;
+      sort_players(pl, pl_count, BY_DESTROYED_VEHICLES, destroyed);
       break;
     }
 

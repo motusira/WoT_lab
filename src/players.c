@@ -187,6 +187,15 @@ int compare_players(const void *a, const void *b, SortCriteria criteria,
   case BY_RATING:
     result = (p1->rating > p2->rating) ? 1 : (p1->rating < p2->rating) ? -1 : 0;
     break;
+  case BY_DAMAGE:
+    result = (p1->total_damage > p2->total_damage) ? 1 : (p1->total_damage < p2->total_damage) ? -1 : 0;
+    break;
+  case BY_DESTROYED_VEHICLES:
+    result = (p1->destroyed_vehicles > p2->destroyed_vehicles) ? 1 : (p1->destroyed_vehicles < p2->destroyed_vehicles) ? -1 : 0;
+    break;
+  case BY_CURRENCY_AMOUNT:
+    result = (p1->currency_amount > p2->currency_amount) ? 1 : (p1->currency_amount < p2->currency_amount) ? -1 : 0;
+    break;
   }
 
   return (order == SORT_DESC) ? -result : result;
@@ -208,6 +217,30 @@ int compare_by_rating_desc(const void *a, const void *b) {
   return compare_players(a, b, BY_RATING, SORT_DESC);
 }
 
+int compare_by_damage_asc(const void *a, const void *b) {
+  return compare_players(a, b, BY_DAMAGE, SORT_ASC);
+}
+
+int compare_by_damage_desc(const void *a, const void *b) {
+  return compare_players(a, b, BY_DAMAGE, SORT_DESC);
+}
+
+int compare_by_destroyed_vehicles_asc(const void *a, const void *b) {
+  return compare_players(a, b, BY_DESTROYED_VEHICLES, SORT_ASC);
+}
+
+int compare_by_destroyed_vehicles_desc(const void *a, const void *b) {
+  return compare_players(a, b, BY_DESTROYED_VEHICLES, SORT_DESC);
+}
+
+int compare_by_currency_amount_asc(const void *a, const void *b) {
+  return compare_players(a, b, BY_CURRENCY_AMOUNT, SORT_ASC);
+}
+
+int compare_by_currency_amount_desc(const void *a, const void *b) {
+  return compare_players(a, b, BY_CURRENCY_AMOUNT, SORT_DESC);
+}
+
 void sort_players(Player *players, int count, SortCriteria criteria,
                   SortOrder order) {
   switch (criteria) {
@@ -218,6 +251,18 @@ void sort_players(Player *players, int count, SortCriteria criteria,
   case BY_RATING:
     qsort(players, count, sizeof(Player),
           (order == SORT_ASC) ? compare_by_rating_asc : compare_by_rating_desc);
+    break;
+  case BY_DAMAGE:
+    qsort(players, count, sizeof(Player),
+          (order == SORT_ASC) ? compare_by_damage_asc : compare_by_damage_desc);
+    break;
+  case BY_DESTROYED_VEHICLES:
+    qsort(players, count, sizeof(Player),
+          (order == SORT_ASC) ? compare_by_destroyed_vehicles_asc : compare_by_destroyed_vehicles_desc);
+    break;
+  case BY_CURRENCY_AMOUNT:
+    qsort(players, count, sizeof(Player),
+          (order == SORT_ASC) ? compare_by_currency_amount_asc : compare_by_currency_amount_desc);
     break;
   }
 }

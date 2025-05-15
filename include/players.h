@@ -6,7 +6,7 @@
 
 typedef enum { SORT_ASC, SORT_DESC } SortOrder;
 
-typedef enum { BY_ID, BY_RATING } SortCriteria;
+typedef enum { BY_ID, BY_RATING, BY_DAMAGE, BY_DESTROYED_VEHICLES, BY_CURRENCY_AMOUNT } SortCriteria;
 
 typedef struct {
   int player_id;
