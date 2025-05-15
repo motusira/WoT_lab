@@ -9,7 +9,7 @@ PGconn *conn;
 UIButton *button, *find_button, *clear_button, *login_button,
     *select_login_button, *make_match_button, *update_matches_button,
     *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
-    *play_button, *register_button, *report_selection_button;
+    *play_button, *register_button, *report_selection_button, *select_tech_level_button;
 UILabel *label, *player_currency, *selected_tank_from_hangar,
     *selected_tank_to_buy, *repair_cost_label, *sell_price_label,
     *buy_price_label;
@@ -28,6 +28,8 @@ int pl_count;
 int id = 1, rating = 1, currency = 1, damage = 1, destroyed = 1;
 int selected = -1, match_selected = -1;
 Player *pl;
+
+int match_tier = 0;
 
 int matches_count;
 Match *matches = NULL;
@@ -317,6 +319,49 @@ int ReportSelectButtonMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
+void TiersMenuCallback(void *cp) {
+  UIButtonSetLabel(select_tech_level_button, cp, -1);
+  report_selected = -1;
+  if (!strcmp(cp, "Random")) {
+    match_tier = 0;
+    return;
+  }
+  if (!strcmp(cp, "Tier 1")) {
+    match_tier = 1;
+    return;
+  }
+  if (!strcmp(cp, "Tier 2")) {
+    match_tier = 2;
+    return;
+  }
+  if (!strcmp(cp, "Tier 3")) {
+    match_tier = 3;
+    return;
+  }
+  if (!strcmp(cp, "Tier 4")) {
+    match_tier = 4;
+    return;
+  }
+  if (!strcmp(cp, "Tier 5")) {
+    match_tier = 5;
+    return;
+  }
+}
+
+int SelectTechLevelButtonMessage(UIElement *element, UIMessage message, int di,
+                             void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    UIMenu *tier_menu = UIMenuCreate(element, 0);
+    UIMenuAddItem(tier_menu, 0, "Random tier", -1, TiersMenuCallback, "Random tier");
+    UIMenuAddItem(tier_menu, 0, "Tier 1", -1, TiersMenuCallback, "Tier 1");
+    UIMenuAddItem(tier_menu, 0, "Tier 2", -1, TiersMenuCallback, "Tier 2");
+    UIMenuAddItem(tier_menu, 0, "Tier 3", -1, TiersMenuCallback, "Tier 3");
+    UIMenuAddItem(tier_menu, 0, "Tier 4", -1, TiersMenuCallback, "Tier 4");
+    UIMenuAddItem(tier_menu, 0, "Tier 5", -1, TiersMenuCallback,"Tier 5");
+    UIMenuShow(tier_menu);
+  }
+  return 0;
+}
 
 void as_admin(void) {
   admin_pane = UITabPaneCreate(
@@ -349,6 +394,8 @@ void as_admin(void) {
 
   match_making =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
+  select_tech_level_button = UIButtonCreate(&match_making->e, 0, "Selecet tech tier", -1);
+  select_tech_level_button->e.messageUser = SelectTechLevelButtonMessage;
   make_match_button = UIButtonCreate(&match_making->e, 0, "Create match", -1);
   make_match_button->e.cp = conn;
   make_match_button->e.messageUser = MakeMatchButtonMessage;
@@ -576,6 +623,20 @@ int LogoutButtonMessage(UIElement *element, UIMessage message, int di,
     UIElementDestroyDescendents(&window->e);
     hangar_tank_selected = -1;
     user = NULL;
+    match_tier = 0;
+    report_selected = -1;
+    chosen_report_type = -1;
+    buy_selected = -1;
+    selected = -1;
+    match_selected = -1;
+    free(tanks);
+    tanks = NULL;
+    free(gs);
+    gs = NULL;
+    free(pts);
+    pts = NULL;
+    free(buyable_tanks);
+    buyable_tanks = NULL;
     init_login();
   }
   return 0;
@@ -852,7 +913,11 @@ int PlayersTableMessage(UIElement *element, UIMessage message, int di,
 int MakeMatchButtonMessage(UIElement *element, UIMessage message, int di,
                            void *dp) {
   if (message == UI_MSG_CLICKED) {
-    find_and_create_match(element->cp);
+    if (match_tier == 0) {
+      find_and_create_match(conn);
+    } else if (match_tier > 0 && match_tier <= 5) {
+      create_match_with_tech_level(conn, match_tier);
+    }
     update_pl(element->cp);
     update_matches(conn);
   }

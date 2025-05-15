@@ -36,131 +36,131 @@ bool create_matches_table(PGconn *conn) {
 }
 
 int find_and_create_match(PGconn *conn) {
-    PGresult *res;
-    char query[1024];
+  PGresult *res;
+  char query[1024];
 
-    snprintf(query, sizeof(query),
-        "WITH available_players AS ("
-        "  SELECT p.player_id, p.login, h.hangar_id, ti.tier "
-        "  FROM players p "
-        "  JOIN hangars h ON p.player_id = h.player_id "
-        "  JOIN tanks t ON h.tank_id = t.tank_id "
-        "  JOIN tank_info ti ON t.data_id = ti.data_id "
-        "  WHERE p.status = 'online' "
-        "    AND h.status = 'operational' "
-        ") "
-        "SELECT tier, COUNT(DISTINCT login) as unique_players "
-        "FROM available_players "
-        "GROUP BY tier "
-        "HAVING COUNT(DISTINCT login) >= 6 "
-        "ORDER BY unique_players DESC "
-        "LIMIT 1");
+  snprintf(query, sizeof(query),
+           "WITH available_players AS ("
+           "  SELECT p.player_id, p.login, h.hangar_id, ti.tier "
+           "  FROM players p "
+           "  JOIN hangars h ON p.player_id = h.player_id "
+           "  JOIN tanks t ON h.tank_id = t.tank_id "
+           "  JOIN tank_info ti ON t.data_id = ti.data_id "
+           "  WHERE p.status = 'online' "
+           "    AND h.status = 'operational' "
+           ") "
+           "SELECT tier, COUNT(DISTINCT login) as unique_players "
+           "FROM available_players "
+           "GROUP BY tier "
+           "HAVING COUNT(DISTINCT login) >= 6 "
+           "ORDER BY unique_players DESC "
+           "LIMIT 1");
 
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+    PQclear(res);
+    return -1;
+  }
+
+  int target_tier = atoi(PQgetvalue(res, 0, 0));
+  PQclear(res);
+
+  snprintf(query, sizeof(query),
+           "WITH candidates AS ("
+           "  SELECT DISTINCT ON (p.login) "
+           "    p.player_id, p.login, h.hangar_id "
+           "  FROM players p "
+           "  JOIN hangars h ON p.player_id = h.player_id "
+           "  JOIN tanks t ON h.tank_id = t.tank_id "
+           "  JOIN tank_info ti ON t.data_id = ti.data_id "
+           "  WHERE p.status = 'online' "
+           "    AND h.status = 'operational' "
+           "    AND ti.tier = %d "
+           "  ORDER BY p.login, RANDOM()"
+           ") "
+           "SELECT player_id, hangar_id FROM candidates "
+           "ORDER BY RANDOM() "
+           "LIMIT 6",
+           target_tier);
+
+  res = PQexec(conn, query);
+  if (PQntuples(res) < 6) {
+    PQclear(res);
+    return -1;
+  }
+
+  char logins[6][50];
+  for (int i = 0; i < 6; i++) {
+    strncpy(logins[i], PQgetvalue(res, i, 1), 49);
+    logins[i][49] = '\0';
+
+    for (int j = 0; j < i; j++) {
+      if (strcmp(logins[i], logins[j]) == 0) {
         PQclear(res);
         return -1;
+      }
     }
+  }
 
-    int target_tier = atoi(PQgetvalue(res, 0, 0));
-    PQclear(res);
+  PQexec(conn, "BEGIN");
+
+  int participants[6];
+  for (int i = 0; i < 6; i++) {
+    int player_id = atoi(PQgetvalue(res, i, 0));
+    int hangar_id = atoi(PQgetvalue(res, i, 1));
+    int team = (i < 3) ? 1 : 2;
 
     snprintf(query, sizeof(query),
-        "WITH candidates AS ("
-        "  SELECT DISTINCT ON (p.login) "
-        "    p.player_id, p.login, h.hangar_id "
-        "  FROM players p "
-        "  JOIN hangars h ON p.player_id = h.player_id "
-        "  JOIN tanks t ON h.tank_id = t.tank_id "
-        "  JOIN tank_info ti ON t.data_id = ti.data_id "
-        "  WHERE p.status = 'online' "
-        "    AND h.status = 'operational' "
-        "    AND ti.tier = %d "
-        "  ORDER BY p.login, RANDOM()"
-        ") "
-        "SELECT player_id, hangar_id FROM candidates "
-        "ORDER BY RANDOM() "
-        "LIMIT 6",
-        target_tier);
+             "INSERT INTO participants "
+             "(player_id, hangar_id, is_killed, damage_dealt, kills, team) "
+             "VALUES (%d, %d, false, 0, 0, %d) RETURNING participant_id",
+             player_id, hangar_id, team);
 
-    res = PQexec(conn, query);
-    if (PQntuples(res) < 6) {
-        PQclear(res);
-        return -1;
+    PGresult *ires = PQexec(conn, query);
+    if (PQresultStatus(ires) != PGRES_TUPLES_OK) {
+      PQclear(ires);
+      PQexec(conn, "ROLLBACK");
+      PQclear(res);
+      return -1;
     }
-
-    char logins[6][50];
-    for (int i = 0; i < 6; i++) {
-        strncpy(logins[i], PQgetvalue(res, i, 1), 49);
-        logins[i][49] = '\0';
-        
-        for (int j = 0; j < i; j++) {
-            if (strcmp(logins[i], logins[j]) == 0) {
-                PQclear(res);
-                return -1;
-            }
-        }
-    }
-
-    PQexec(conn, "BEGIN");
-
-    int participants[6];
-    for (int i = 0; i < 6; i++) {
-        int player_id = atoi(PQgetvalue(res, i, 0));
-        int hangar_id = atoi(PQgetvalue(res, i, 1));
-        int team = (i < 3) ? 1 : 2;
-
-        snprintf(query, sizeof(query),
-                "INSERT INTO participants "
-                "(player_id, hangar_id, is_killed, damage_dealt, kills, team) "
-                "VALUES (%d, %d, false, 0, 0, %d) RETURNING participant_id",
-                player_id, hangar_id, team);
-
-        PGresult *ires = PQexec(conn, query);
-        if (PQresultStatus(ires) != PGRES_TUPLES_OK) {
-            PQclear(ires);
-            PQexec(conn, "ROLLBACK");
-            PQclear(res);
-            return -1;
-        }
-        participants[i] = atoi(PQgetvalue(ires, 0, 0));
-        PQclear(ires);
-
-        snprintf(query, sizeof(query),
-                "UPDATE players SET status = 'in_game' WHERE player_id = %d",
-                player_id);
-        PGresult *ures = PQexec(conn, query);
-        if (PQresultStatus(ures) != PGRES_COMMAND_OK) {
-            PQclear(ures);
-            PQexec(conn, "ROLLBACK");
-            PQclear(res);
-            return -1;
-        }
-        PQclear(ures);
-    }
-    PQclear(res);
+    participants[i] = atoi(PQgetvalue(ires, 0, 0));
+    PQclear(ires);
 
     snprintf(query, sizeof(query),
-            "INSERT INTO matches "
-            "(start_time, result, tech_level, "
-            "participant1, participant2, participant3, "
-            "participant4, participant5, participant6) "
-            "VALUES (NOW(), -1, %d, %d, %d, %d, %d, %d, %d) RETURNING match_id",
-            target_tier, participants[0], participants[1], participants[2],
-            participants[3], participants[4], participants[5]);
-
-    res = PQexec(conn, query);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        PQexec(conn, "ROLLBACK");
-        PQclear(res);
-        return -1;
+             "UPDATE players SET status = 'in_game' WHERE player_id = %d",
+             player_id);
+    PGresult *ures = PQexec(conn, query);
+    if (PQresultStatus(ures) != PGRES_COMMAND_OK) {
+      PQclear(ures);
+      PQexec(conn, "ROLLBACK");
+      PQclear(res);
+      return -1;
     }
+    PQclear(ures);
+  }
+  PQclear(res);
 
-    int match_id = atoi(PQgetvalue(res, 0, 0));
+  snprintf(query, sizeof(query),
+           "INSERT INTO matches "
+           "(start_time, result, tech_level, "
+           "participant1, participant2, participant3, "
+           "participant4, participant5, participant6) "
+           "VALUES (NOW(), -1, %d, %d, %d, %d, %d, %d, %d) RETURNING match_id",
+           target_tier, participants[0], participants[1], participants[2],
+           participants[3], participants[4], participants[5]);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    PQexec(conn, "ROLLBACK");
     PQclear(res);
+    return -1;
+  }
 
-    PQexec(conn, "COMMIT");
-    return match_id;
+  int match_id = atoi(PQgetvalue(res, 0, 0));
+  PQclear(res);
+
+  PQexec(conn, "COMMIT");
+  return match_id;
 }
 
 int *distribute_kills(int total_kills, int player_count) {
@@ -382,4 +382,133 @@ char *get_nickname_by_participant_id(PGconn *conn, int participant_id) {
 
   PQclear(res);
   return result_nickname;
+}
+
+int create_match_with_tech_level(PGconn *conn, int tech_level) {
+  PGresult *res;
+  char query[1024];
+
+  if (tech_level < 1 || tech_level > 5) {
+    fprintf(stderr, "Invalid tech level: %d. Must be between 1-5\n",
+            tech_level);
+    return -1;
+  }
+
+  snprintf(query, sizeof(query),
+           "WITH candidates AS ("
+           "  SELECT DISTINCT ON (p.login) "
+           "    p.player_id, p.login, h.hangar_id "
+           "  FROM players p "
+           "  JOIN hangars h ON p.player_id = h.player_id "
+           "  JOIN tanks t ON h.tank_id = t.tank_id "
+           "  JOIN tank_info ti ON t.data_id = ti.data_id "
+           "  WHERE p.status = 'online' "
+           "    AND h.status = 'operational' "
+           "    AND ti.tier = %d "
+           "  ORDER BY p.login, RANDOM()"
+           ") "
+           "SELECT player_id, login, hangar_id FROM candidates "
+           "ORDER BY RANDOM() "
+           "LIMIT 6",
+           tech_level);
+
+  res = PQexec(conn, query);
+  if (PQntuples(res) < 6) {
+    fprintf(stderr, "Not enough players for tech level %d\n", tech_level);
+    PQclear(res);
+    return -1;
+  }
+
+  char logins[6][50];
+  for (int i = 0; i < 6; i++) {
+    strncpy(logins[i], PQgetvalue(res, i, 1), 49);
+    logins[i][49] = '\0';
+
+    for (int j = 0; j < i; j++) {
+      if (strcmp(logins[i], logins[j]) == 0) {
+        fprintf(stderr, "Duplicate login detected: %s\n", logins[i]);
+        PQclear(res);
+        return -1;
+      }
+    }
+  }
+
+  PGresult *tx_res = PQexec(conn, "BEGIN");
+  if (PQresultStatus(tx_res) != PGRES_COMMAND_OK) {
+    fprintf(stderr, "BEGIN failed: %s\n", PQerrorMessage(conn));
+    PQclear(tx_res);
+    PQclear(res);
+    return -1;
+  }
+  PQclear(tx_res);
+
+  int participants[6];
+  for (int i = 0; i < 6; i++) {
+    int player_id = atoi(PQgetvalue(res, i, 0));
+    int hangar_id = atoi(PQgetvalue(res, i, 2));
+    int team = (i < 3) ? 1 : 2;
+
+    snprintf(query, sizeof(query),
+             "INSERT INTO participants "
+             "(player_id, hangar_id, is_killed, damage_dealt, kills, team) "
+             "VALUES (%d, %d, false, 0, 0, %d) RETURNING participant_id",
+             player_id, hangar_id, team);
+
+    PGresult *ires = PQexec(conn, query);
+    if (PQresultStatus(ires) != PGRES_TUPLES_OK) {
+      fprintf(stderr, "Failed to create participant: %s\n",
+              PQerrorMessage(conn));
+      PQclear(ires);
+      PQexec(conn, "ROLLBACK");
+      PQclear(res);
+      return -1;
+    }
+    participants[i] = atoi(PQgetvalue(ires, 0, 0));
+    PQclear(ires);
+
+    snprintf(query, sizeof(query),
+             "UPDATE players SET status = 'in_game' WHERE player_id = %d",
+             player_id);
+    PGresult *ures = PQexec(conn, query);
+    if (PQresultStatus(ures) != PGRES_COMMAND_OK) {
+      fprintf(stderr, "Failed to update player status: %s\n",
+              PQerrorMessage(conn));
+      PQclear(ures);
+      PQexec(conn, "ROLLBACK");
+      PQclear(res);
+      return -1;
+    }
+    PQclear(ures);
+  }
+  PQclear(res);
+
+  snprintf(query, sizeof(query),
+           "INSERT INTO matches "
+           "(start_time, result, tech_level, "
+           "participant1, participant2, participant3, "
+           "participant4, participant5, participant6) "
+           "VALUES (NOW(), -1, %d, %d, %d, %d, %d, %d, %d) RETURNING match_id",
+           tech_level, participants[0], participants[1], participants[2],
+           participants[3], participants[4], participants[5]);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Failed to create match: %s\n", PQerrorMessage(conn));
+    PQexec(conn, "ROLLBACK");
+    PQclear(res);
+    return -1;
+  }
+
+  int match_id = atoi(PQgetvalue(res, 0, 0));
+  PQclear(res);
+
+  tx_res = PQexec(conn, "COMMIT");
+  if (PQresultStatus(tx_res) != PGRES_COMMAND_OK) {
+    fprintf(stderr, "COMMIT failed: %s\n", PQerrorMessage(conn));
+    PQclear(tx_res);
+    return -1;
+  }
+  PQclear(tx_res);
+
+  return match_id;
 }

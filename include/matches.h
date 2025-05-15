@@ -19,5 +19,6 @@ void process_completed_matches(PGconn *conn);
 Match *fetch_all_matches(PGconn *conn, int *match_count);
 void free_matches(Match *matches);
 char *get_nickname_by_participant_id(PGconn *conn, int participant_id);
+int create_match_with_tech_level(PGconn *conn, int tech_level);
 
 #endif
