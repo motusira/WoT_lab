@@ -7,6 +7,15 @@
 #define CURRENCY_ERROR 1
 #define POINTS_ERROR 2
 
+#define SUCCESS 0
+#define PLAYER_NOT_FOUND 1
+#define TANK_NOT_FOUND 2
+#define NOT_ENOUGH_CURRENCY 3
+#define NOT_ENOUGH_POINTS 4
+#define TANK_ALREADY_OWNED 5
+#define UPDATE_ERROR 6
+#define INSERT_ERROR 7
+
 typedef struct {
   int tank_id;
   int tier;

@@ -324,6 +324,9 @@ int SellButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
       UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
       player_hangar_table->itemCount = tanks_in_hangar;
       UITableResizeColumns(player_hangar_table);
+      player_can_buy_table->itemCount = can_buy_tanks;
+      UITableResizeColumns(player_can_buy_table);
+      UIElementRefresh(&window->e);
       UIElementRefresh(&window->e);
     }
   }
@@ -387,11 +390,11 @@ int BuyButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
       int error = buy_tank(conn, user, buyable_tanks[buy_selected].tank_id,
                            buyable_tanks[buy_selected].mod_id);
 
-      if (error == 1) {
+      if (error == NOT_ENOUGH_CURRENCY) {
         UILabelSetContent(buy_price_label, "Not enough currency amount!", -1);
-      } else if (error == 2) {
+      } else if (error == NOT_ENOUGH_POINTS) {
         UILabelSetContent(buy_price_label, "Not enough game points amout!", -1);
-      } else if (error == 0) {
+      } else if (error == SUCCESS) {
         UILabelSetContent(buy_price_label, "", -1);
       }
       UILabelSetContent(selected_tank_to_buy, "No tank selected.", -1);
