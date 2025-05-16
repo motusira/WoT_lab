@@ -3,16 +3,19 @@
 #include "../include/matches.h"
 #include "../include/players.h"
 #include <libpq-fe.h>
+#include <pthread.h>
+#include <unistd.h>
 
 PGconn *conn;
 
 UIButton *button, *find_button, *clear_button, *login_button,
     *select_login_button, *make_match_button, *update_matches_button,
     *repair_button, *upgrade_button, *sell_button, *buy_button, *logout_button,
-    *play_button, *register_button, *report_selection_button, *select_tech_level_button;
+    *play_button, *register_button, *report_selection_button,
+    *select_tech_level_button, *play_button;
 UILabel *label, *player_currency, *selected_tank_from_hangar,
     *selected_tank_to_buy, *repair_cost_label, *sell_price_label,
-    *buy_price_label;
+    *buy_price_label, *play_info_label;
 UIWindow *window;
 UIPanel *login_parent, *login, *player_info, *pi_ui, *pi_result, *players_list,
     *match_making, *user_panel_parent, *user_login_panel,
@@ -136,9 +139,7 @@ void update_matches(PGconn *conn) {
   UITableResizeColumns(matches_table);
 }
 
-
-int WLDTableMessage(UIElement *element, UIMessage message, int di,
-                        void *dp) {
+int WLDTableMessage(UIElement *element, UIMessage message, int di, void *dp) {
   if (message == UI_MSG_TABLE_GET_ITEM) {
     UITableGetItem *m = (UITableGetItem *)dp;
     m->isSelected = report_selected == m->index;
@@ -148,14 +149,11 @@ int WLDTableMessage(UIElement *element, UIMessage message, int di,
     case 1:
       return snprintf(m->buffer, m->bufferBytes, "%s", gs[m->index].login);
     case 2:
-      return snprintf(m->buffer, m->bufferBytes, "%d",
-                      gs[m->index].wins);
+      return snprintf(m->buffer, m->bufferBytes, "%d", gs[m->index].wins);
     case 3:
-      return snprintf(m->buffer, m->bufferBytes, "%d",
-                      gs[m->index].losses);
+      return snprintf(m->buffer, m->bufferBytes, "%d", gs[m->index].losses);
     case 4:
-      return snprintf(m->buffer, m->bufferBytes, "%d",
-                      gs[m->index].draws);
+      return snprintf(m->buffer, m->bufferBytes, "%d", gs[m->index].draws);
     }
   } else if (message == UI_MSG_LEFT_DOWN) {
     int hit = UITableHeaderHitTest((UITable *)element, element->window->cursorX,
@@ -188,8 +186,7 @@ int WLDTableMessage(UIElement *element, UIMessage message, int di,
   return 0;
 }
 
-int PTSTableMessage(UIElement *element, UIMessage message, int di,
-                        void *dp) {
+int PTSTableMessage(UIElement *element, UIMessage message, int di, void *dp) {
   if (message == UI_MSG_TABLE_GET_ITEM) {
     UITableGetItem *m = (UITableGetItem *)dp;
     m->isSelected = report_selected == m->index;
@@ -246,7 +243,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 0;
     gs = get_player_stats(conn, &gs_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tWins\tLoses\tDrafts");
+    report_table =
+        UITableCreate(&reports->e, 0, "ID\tLogin\tWins\tLoses\tDrafts");
     report_table->e.messageUser = WLDTableMessage;
     report_table->itemCount = gs_count;
     UITableResizeColumns(report_table);
@@ -256,7 +254,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 1;
     pts = get_tech_level_stats(conn, 1, &pts_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table = UITableCreate(&reports->e, 0,
+                                 "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
     report_table->itemCount = pts_count;
     UITableResizeColumns(report_table);
@@ -266,7 +265,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 2;
     pts = get_tech_level_stats(conn, 2, &pts_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table = UITableCreate(&reports->e, 0,
+                                 "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
     report_table->itemCount = pts_count;
     UITableResizeColumns(report_table);
@@ -276,7 +276,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 3;
     pts = get_tech_level_stats(conn, 3, &pts_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table = UITableCreate(&reports->e, 0,
+                                 "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
     report_table->itemCount = pts_count;
     UITableResizeColumns(report_table);
@@ -286,7 +287,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 4;
     pts = get_tech_level_stats(conn, 4, &pts_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table = UITableCreate(&reports->e, 0,
+                                 "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
     report_table->itemCount = pts_count;
     UITableResizeColumns(report_table);
@@ -296,7 +298,8 @@ void ReportsMenuCallback(void *cp) {
     chosen_report_type = 5;
     pts = get_tech_level_stats(conn, 5, &pts_count);
     UIElementDestroy(&report_table->e);
-    report_table = UITableCreate(&reports->e, 0, "ID\tLogin\tTotal damage\tDestroyed vehicles");
+    report_table = UITableCreate(&reports->e, 0,
+                                 "ID\tLogin\tTotal damage\tDestroyed vehicles");
     report_table->e.messageUser = PTSTableMessage;
     report_table->itemCount = pts_count;
     UITableResizeColumns(report_table);
@@ -305,15 +308,21 @@ void ReportsMenuCallback(void *cp) {
 }
 
 int ReportSelectButtonMessage(UIElement *element, UIMessage message, int di,
-                             void *dp) {
+                              void *dp) {
   if (message == UI_MSG_CLICKED) {
     UIMenu *report_menu = UIMenuCreate(element, 0);
-    UIMenuAddItem(report_menu, 0, "Wins/Loses/Drafts", -1, ReportsMenuCallback, "Wins/Loses/Drafts");
-    UIMenuAddItem(report_menu, 0, "Tier 1 stats", -1, ReportsMenuCallback, "Tier 1 stats");
-    UIMenuAddItem(report_menu, 0, "Tier 2 stats", -1, ReportsMenuCallback, "Tier 2 stats");
-    UIMenuAddItem(report_menu, 0, "Tier 3 stats", -1, ReportsMenuCallback, "Tier 3 stats");
-    UIMenuAddItem(report_menu, 0, "Tier 4 stats", -1, ReportsMenuCallback, "Tier 4 stats");
-    UIMenuAddItem(report_menu, 0, "Tier 5 stats", -1, ReportsMenuCallback,"Tier 5 stats");
+    UIMenuAddItem(report_menu, 0, "Wins/Loses/Drafts", -1, ReportsMenuCallback,
+                  "Wins/Loses/Drafts");
+    UIMenuAddItem(report_menu, 0, "Tier 1 stats", -1, ReportsMenuCallback,
+                  "Tier 1 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 2 stats", -1, ReportsMenuCallback,
+                  "Tier 2 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 3 stats", -1, ReportsMenuCallback,
+                  "Tier 3 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 4 stats", -1, ReportsMenuCallback,
+                  "Tier 4 stats");
+    UIMenuAddItem(report_menu, 0, "Tier 5 stats", -1, ReportsMenuCallback,
+                  "Tier 5 stats");
     UIMenuShow(report_menu);
   }
   return 0;
@@ -349,15 +358,16 @@ void TiersMenuCallback(void *cp) {
 }
 
 int SelectTechLevelButtonMessage(UIElement *element, UIMessage message, int di,
-                             void *dp) {
+                                 void *dp) {
   if (message == UI_MSG_CLICKED) {
     UIMenu *tier_menu = UIMenuCreate(element, 0);
-    UIMenuAddItem(tier_menu, 0, "Random tier", -1, TiersMenuCallback, "Random tier");
+    UIMenuAddItem(tier_menu, 0, "Random tier", -1, TiersMenuCallback,
+                  "Random tier");
     UIMenuAddItem(tier_menu, 0, "Tier 1", -1, TiersMenuCallback, "Tier 1");
     UIMenuAddItem(tier_menu, 0, "Tier 2", -1, TiersMenuCallback, "Tier 2");
     UIMenuAddItem(tier_menu, 0, "Tier 3", -1, TiersMenuCallback, "Tier 3");
     UIMenuAddItem(tier_menu, 0, "Tier 4", -1, TiersMenuCallback, "Tier 4");
-    UIMenuAddItem(tier_menu, 0, "Tier 5", -1, TiersMenuCallback,"Tier 5");
+    UIMenuAddItem(tier_menu, 0, "Tier 5", -1, TiersMenuCallback, "Tier 5");
     UIMenuShow(tier_menu);
   }
   return 0;
@@ -394,7 +404,8 @@ void as_admin(void) {
 
   match_making =
       UIPanelCreate(&admin_pane->e, UI_PANEL_COLOR_1 | UI_PANEL_MEDIUM_SPACING);
-  select_tech_level_button = UIButtonCreate(&match_making->e, 0, "Selecet tech tier", -1);
+  select_tech_level_button =
+      UIButtonCreate(&match_making->e, 0, "Selecet tech tier", -1);
   select_tech_level_button->e.messageUser = SelectTechLevelButtonMessage;
   make_match_button = UIButtonCreate(&match_making->e, 0, "Create match", -1);
   make_match_button->e.cp = conn;
@@ -417,7 +428,8 @@ void as_admin(void) {
   reports = UISplitPaneCreate(&admin_pane->e, UI_SPLIT_PANE_VERTICAL, .10f);
 
   report_chose_panel = UIPanelCreate(&reports->e, UI_PANEL_COLOR_1);
-  report_selection_button = UIButtonCreate(&report_chose_panel->e, 0, "Select report type", -1);
+  report_selection_button =
+      UIButtonCreate(&report_chose_panel->e, 0, "Select report type", -1);
   report_selection_button->e.messageUser = ReportSelectButtonMessage;
   report_table = UITableCreate(&reports->e, 0, "");
 
@@ -462,8 +474,11 @@ int PlayerHangarTableMessage(UIElement *element, UIMessage message, int di,
         snprintf(buff, 128, "Selected %d tank",
                  tanks[hangar_tank_selected].tank_id);
         UILabelSetContent(selected_tank_from_hangar, buff, -1);
+        UIElementSetDisabled(&play_button->e, false);
       } else {
         UILabelSetContent(selected_tank_from_hangar, "No tank selected.", -1);
+        UILabelSetContent(play_info_label, "", -1);
+        UIElementSetDisabled(&play_button->e, true);
       }
       get_repair_cost();
       get_sell_price();
@@ -656,6 +671,7 @@ int BuyButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
         UILabelSetContent(buy_price_label, "", -1);
       }
       UILabelSetContent(selected_tank_to_buy, "No tank selected.", -1);
+      UILabelSetContent(buy_price_label, "", -1);
 
       get_player_currency(user);
       update_tanks();
@@ -703,6 +719,73 @@ void get_sell_price() {
   }
 }
 
+void *countdown_thread(void *arg) {
+  time_t start_time = time(NULL);
+  int elapsed_seconds = 0;
+
+  char buff[256];
+
+  while (elapsed_seconds < 33) {
+    time_t current_time = time(NULL);
+    int new_elapsed = (int)difftime(current_time, start_time);
+
+    if (new_elapsed > elapsed_seconds) {
+      elapsed_seconds = new_elapsed;
+      snprintf(buff, 256, "Game progress: %.1f%% (%d/33)",
+               elapsed_seconds / 33.0 * 100, elapsed_seconds);
+      UILabelSetContent(play_info_label, buff, -1);
+    }
+    UIElementRefresh(&user_panel_parent->e);
+    UIElementRefresh(&play_info_label->e);
+    UIElementRefresh(&window->e);
+  }
+
+  process_completed_matches(conn);
+  snprintf(buff, 256, "Result: %s", get_last_match_result(conn, user) == 1 ? "Win" : get_last_match_result(conn, user) == 2 ? "Lose" : "Draw");
+  UILabelSetContent(play_info_label, buff, -1);
+
+  update_tanks();
+  get_player_currency(user);
+
+  UIElementSetDisabled(&play_button->e, false);
+  UIElementSetDisabled(&sell_button->e, false);
+  UIElementSetDisabled(&repair_button->e, false);
+  UIElementSetDisabled(&logout_button->e, false);
+  UIElementSetDisabled(&buy_button->e, false);
+  UIElementSetDisabled(&player_hangar_table->e, false);
+  UIElementSetDisabled(&player_can_buy_table->e, false);
+
+  return NULL;
+}
+
+int PlayButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
+  if (message == UI_MSG_CLICKED) {
+    if (hangar_tank_selected >= 0) {
+      if (!strcmp(tanks[hangar_tank_selected].hangar_status, "needs_repair")) {
+        UILabelSetContent(play_info_label, "Repair this tank first!", -1);
+      } else {
+        if (generate_match_for_player(conn, user,
+                                      tanks[hangar_tank_selected].tank_id)) {
+          UIElementSetDisabled(&play_button->e, true);
+          UIElementSetDisabled(&sell_button->e, true);
+          UIElementSetDisabled(&repair_button->e, true);
+          UIElementSetDisabled(&logout_button->e, true);
+          UIElementSetDisabled(&buy_button->e, true);
+          UIElementSetDisabled(&player_hangar_table->e, true);
+          UIElementSetDisabled(&player_can_buy_table->e, true);
+          pthread_t timer_thread;
+
+          if (pthread_create(&timer_thread, NULL, countdown_thread, NULL)) {
+            fprintf(stderr, "Error creating thread\n");
+            return 1;
+          }
+        }
+      }
+    }
+  }
+  return 0;
+}
+
 void as_user(void) {
   hangar = UISplitPaneCreate(&window->e, 0, 0.50f);
 
@@ -744,6 +827,16 @@ void as_user(void) {
 
   selected_tank_from_hangar =
       UILabelCreate(&user_panel_parent->e, 0, "No tank selected.", -1);
+
+  play_button =
+      UIButtonCreate(&user_panel_parent->e, 0, "Play on selected tank", -1);
+  play_button->e.messageUser = PlayButtonMessage;
+  UIElementSetDisabled(&play_button->e, true);
+
+  play_info_label = UILabelCreate(&user_panel_parent->e, 0, "", -1);
+
+  UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
+  UISpacerCreate(&user_panel_parent->e, 0, 1, 20);
 
   user_panel_hangar_actions = UIPanelCreate(
       &user_panel_parent->e, UI_PANEL_COLOR_1 | UI_PANEL_HORIZONTAL);
@@ -1029,3 +1122,4 @@ void ui_start(PGconn *cn) {
   free_matches(matches);
   free(tanks);
 }
+

@@ -512,3 +512,211 @@ int create_match_with_tech_level(PGconn *conn, int tech_level) {
 
   return match_id;
 }
+bool generate_match_for_player(PGconn *conn, const char *login, int tank_id) {
+  PGresult *res;
+  char query[2048];
+  bool success = false;
+
+  char *escaped_login = PQescapeLiteral(conn, login, strlen(login));
+  if (!escaped_login) {
+    fprintf(stderr, "Login escaping failed\n");
+    return false;
+  }
+
+  res = PQexec(conn, "BEGIN");
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    fprintf(stderr, "BEGIN failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    PQfreemem(escaped_login);
+    return false;
+  }
+  PQclear(res);
+
+  snprintf(query, sizeof(query),
+           "SELECT p.player_id, h.hangar_id, ti.tier "
+           "FROM players p "
+           "JOIN hangars h ON p.player_id = h.player_id "
+           "JOIN tanks t ON h.tank_id = t.tank_id "
+           "JOIN tank_info ti ON t.data_id = ti.data_id "
+           "WHERE p.login = %s "
+           "AND h.tank_id = %d "
+           "AND h.status = 'operational'",
+           escaped_login, tank_id);
+
+  res = PQexec(conn, query);
+  if (PQntuples(res) == 0) {
+    fprintf(stderr, "Player/tank validation failed\n");
+    goto rollback;
+  }
+
+  int player_id = atoi(PQgetvalue(res, 0, 0));
+  int hangar_id = atoi(PQgetvalue(res, 0, 1));
+  int tech_level = atoi(PQgetvalue(res, 0, 2));
+  PQclear(res);
+  PQfreemem(escaped_login);
+
+  int participants[6];
+
+  snprintf(query, sizeof(query),
+           "INSERT INTO participants (player_id, hangar_id, team, "
+           "damage_dealt, kills) "
+           "VALUES (%d, %d, 1, 0, 0) RETURNING participant_id",
+           player_id, hangar_id);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Participant creation failed %s\n", PQerrorMessage(conn));
+    goto rollback;
+  }
+  participants[0] = atoi(PQgetvalue(res, 0, 0));
+  PQclear(res);
+
+  snprintf(query, sizeof(query),
+           "WITH candidates AS ("
+           "  SELECT DISTINCT ON (p.login) p.player_id, h.hangar_id "
+           "  FROM players p "
+           "  JOIN hangars h ON p.player_id = h.player_id "
+           "  JOIN tanks t ON h.tank_id = t.tank_id "
+           "  JOIN tank_info ti ON t.data_id = ti.data_id "
+           "  WHERE p.status = 'online' "
+           "    AND p.player_id != %d "
+           "    AND h.status = 'operational' "
+           "    AND ti.tier = %d "
+           "  ORDER BY p.login, RANDOM() "
+           ") "
+           "SELECT player_id, hangar_id FROM candidates "
+           "ORDER BY RANDOM() LIMIT 5",
+           player_id, tech_level);
+
+  res = PQexec(conn, query);
+  if (PQntuples(res) < 5) {
+    fprintf(stderr, "Not enough players found\n");
+    goto rollback;
+  }
+
+  for (int i = 0; i < 5; i++) {
+    int p_id = atoi(PQgetvalue(res, i, 0));
+    int h_id = atoi(PQgetvalue(res, i, 1));
+    int team = (i < 2) ? 1 : 2;
+
+    snprintf(query, sizeof(query),
+             "INSERT INTO participants (player_id, hangar_id, team, "
+             "damage_dealt, kills) "
+             "VALUES (%d, %d, %d, 0, 0) RETURNING participant_id",
+             p_id, h_id, team);
+
+    PGresult *ires = PQexec(conn, query);
+    if (PQresultStatus(ires) != PGRES_TUPLES_OK) {
+      fprintf(stderr, "Participant creation failed %s\n", PQerrorMessage(conn));
+      PQclear(ires);
+      goto rollback;
+    }
+    participants[i + 1] = atoi(PQgetvalue(ires, 0, 0));
+    PQclear(ires);
+  }
+  PQclear(res);
+
+  snprintf(query, sizeof(query),
+           "INSERT INTO matches "
+           "(tech_level, participant1, participant2, participant3, "
+           "participant4, participant5, participant6, result) VALUES ("
+           "%d, %d, %d, %d, %d, %d, %d, -1)",
+           tech_level, participants[0], participants[1], participants[2],
+           participants[3], participants[4], participants[5]);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    fprintf(stderr, "Match creation failed %s\n", PQerrorMessage(conn));
+    goto rollback;
+  }
+  PQclear(res);
+
+  for (int i = 0; i < 6; i++) {
+    snprintf(query, sizeof(query),
+             "UPDATE players SET status = 'in_game' "
+             "WHERE player_id = ("
+             "SELECT player_id FROM participants "
+             "WHERE participant_id = %d)",
+             participants[i]);
+
+    res = PQexec(conn, query);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+      fprintf(stderr, "Status update failed\n");
+      PQclear(res);
+      goto rollback;
+    }
+    PQclear(res);
+  }
+
+  res = PQexec(conn, "COMMIT");
+  success = PQresultStatus(res) == PGRES_COMMAND_OK;
+  PQclear(res);
+  return success;
+
+rollback:
+  PQexec(conn, "ROLLBACK");
+  PQclear(res);
+  return false;
+}
+
+int get_last_match_result(PGconn *conn, const char *login) {
+  PGresult *res;
+  char query[2048];
+  int result = -2; // -2 = ошибка/не найдено
+
+  char *escaped_login = PQescapeLiteral(conn, login, strlen(login));
+  if (!escaped_login) {
+    fprintf(stderr, "Login escaping failed\n");
+    return -2;
+  }
+
+  snprintf(query, sizeof(query),
+           "SELECT player_id FROM players WHERE login = %s", escaped_login);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+    fprintf(stderr, "Player not found\n");
+    PQclear(res);
+    PQfreemem(escaped_login);
+    return -2;
+  }
+
+  int player_id = atoi(PQgetvalue(res, 0, 0));
+  PQclear(res);
+  PQfreemem(escaped_login);
+
+  snprintf(query, sizeof(query),
+           "SELECT m.result FROM matches m "
+           "WHERE "
+           "m.participant1 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) OR "
+           "m.participant2 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) OR "
+           "m.participant3 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) OR "
+           "m.participant4 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) OR "
+           "m.participant5 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) OR "
+           "m.participant6 IN (SELECT participant_id FROM participants WHERE "
+           "player_id = %d) "
+           "ORDER BY m.start_time DESC LIMIT 1",
+           player_id, player_id, player_id, player_id, player_id, player_id);
+
+  res = PQexec(conn, query);
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    fprintf(stderr, "Query failed: %s\n", PQerrorMessage(conn));
+    PQclear(res);
+    return -2;
+  }
+
+  if (PQntuples(res) > 0) {
+    result = atoi(PQgetvalue(res, 0, 0));
+  } else {
+    fprintf(stderr, "No matches found for player\n");
+    result = -1;
+  }
+
+  PQclear(res);
+  return result;
+}
